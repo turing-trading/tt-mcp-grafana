@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 from pydantic import UUID4
 
-from .settings import grafana_settings
+from .settings import grafana_settings, GrafanaSettings
 from .grafana_types import (
     AddActivityToIncidentArguments,
     CreateIncidentArguments,
@@ -51,6 +51,27 @@ class GrafanaClient:
         self.c = httpx.AsyncClient(
             base_url=url, auth=auth, timeout=httpx.Timeout(timeout=30.0)
         )
+
+    @classmethod
+    def from_settings(cls, settings: GrafanaSettings) -> "GrafanaClient":
+        """
+        Create a Grafana client from the given settings.
+        """
+        return cls(settings.url, settings.api_key)
+
+    @classmethod
+    def for_current_request(cls) -> "GrafanaClient":
+        """
+        Create a Grafana client for the current request.
+
+        This will use the Grafana settings from the current contextvar.
+        If running with the stdio transport then these settings will be
+        the ones in the MCP server's settings. If running with the SSE
+        transport then the settings will be extracted from the request
+        headers if possible, falling back to the defaults in the MCP
+        server's settings.
+        """
+        return cls.from_settings(grafana_settings.get())
 
     async def get(self, path: str, params: dict[str, str] | None = None) -> bytes:
         r = await self.c.get(path, params=params)
@@ -215,6 +236,3 @@ class GrafanaClient:
             f"/api/datasources/proxy/uid/{datasource_uid}/api/v1/label/{label_name}/values",
             params,
         )
-
-
-grafana_client = GrafanaClient(grafana_settings.url, api_key=grafana_settings.api_key)
