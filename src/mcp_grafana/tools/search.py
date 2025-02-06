@@ -1,13 +1,13 @@
 from mcp.server import FastMCP
 
-from ..client import SearchDashboardsArguments, GrafanaClient
+from ..client import SearchDashboardsArguments, grafana_client
 
 
 async def search_dashboards(arguments: SearchDashboardsArguments) -> bytes:
     """
     Search dashboards in the Grafana instance.
     """
-    return await GrafanaClient.for_current_request().search_dashboards(arguments)
+    return await grafana_client.get().search_dashboards(arguments)
 
 
 def add_tools(mcp: FastMCP):

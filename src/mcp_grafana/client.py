@@ -8,6 +8,7 @@ It's a bit messy for now because it came out of a Hackathon.
 We should separate HTTP types from tool types.
 """
 
+import contextvars
 import math
 from datetime import datetime
 from typing import Any
@@ -236,3 +237,7 @@ class GrafanaClient:
             f"/api/datasources/proxy/uid/{datasource_uid}/api/v1/label/{label_name}/values",
             params,
         )
+
+
+grafana_client = contextvars.ContextVar("grafana_client")
+grafana_client.set(GrafanaClient.for_current_request())

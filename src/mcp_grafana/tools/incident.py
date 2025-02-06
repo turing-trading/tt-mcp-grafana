@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from ..client import (
     AddActivityToIncidentArguments,
     CreateIncidentArguments,
-    GrafanaClient,
+    grafana_client,
 )
 from ..grafana_types import QueryIncidentPreviewsRequest, IncidentPreviewsQuery
 
@@ -49,14 +49,14 @@ async def list_incidents(arguments: ListIncidentsArguments) -> bytes:
         ),
         includeCustomFieldValues=True,
     )
-    return await GrafanaClient.for_current_request().list_incidents(body)
+    return await grafana_client.get().list_incidents(body)
 
 
 async def create_incident(arguments: CreateIncidentArguments) -> bytes:
     """
     Create an incident in the Grafana Incident incident management tool.
     """
-    return await GrafanaClient.for_current_request().create_incident(arguments)
+    return await grafana_client.get().create_incident(arguments)
 
 
 async def add_activity_to_incident(
@@ -70,7 +70,7 @@ async def add_activity_to_incident(
     :param event_time: The time that the activity occurred. If not provided, the current time will be used.
                        If provided, it must be in RFC3339 format.
     """
-    return await GrafanaClient.for_current_request().add_activity_to_incident(
+    return await grafana_client.get().add_activity_to_incident(
         AddActivityToIncidentArguments(
             incidentId=incident_id,
             body=body,
@@ -89,9 +89,7 @@ async def resolve_incident(incident_id: str, summary: str) -> bytes:
                     This should be succint but thorough and informative,
                     enough to serve as a mini post-incident-report.
     """
-    return await GrafanaClient.for_current_request().close_incident(
-        incident_id, summary
-    )
+    return await grafana_client.get().close_incident(incident_id, summary)
 
 
 def add_tools(mcp: FastMCP):

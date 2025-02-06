@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from starlette.datastructures import Headers
 
+from .client import GrafanaClient, grafana_client
 from .settings import GrafanaSettings, grafana_settings
 
 
@@ -40,13 +41,15 @@ class GrafanaMiddleware:
 
     async def __aenter__(self):
         if (info := GrafanaInfo.from_headers(self.request.headers)) is not None:
-            current = grafana_settings.get()
-            self.token = grafana_settings.set(
-                GrafanaSettings(
-                    url=info.url,
-                    api_key=info.authorization,
-                    tools=current.tools,
-                )
+            current_settings = grafana_settings.get()
+            new_settings = GrafanaSettings(
+                url=info.url,
+                api_key=info.authorization,
+                tools=current_settings.tools,
+            )
+            self.settings_token = grafana_settings.set(new_settings)
+            self.client_token = grafana_client.set(
+                GrafanaClient.from_settings(new_settings)
             )
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
