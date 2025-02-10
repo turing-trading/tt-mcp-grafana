@@ -13,7 +13,7 @@ class GrafanaInfo:
     Simple container for the Grafana URL and API key.
     """
 
-    authorization: str
+    api_key: str
     url: str
 
     @classmethod
@@ -21,7 +21,7 @@ class GrafanaInfo:
         if (url := headers.get("X-Grafana-URL")) is not None and (
             key := headers.get("X-Grafana-API-Key")
         ) is not None:
-            return cls(authorization=key, url=url)
+            return cls(api_key=key, url=url)
         return None
 
 
@@ -45,7 +45,7 @@ class GrafanaMiddleware:
             current_settings = grafana_settings.get()
             new_settings = GrafanaSettings(
                 url=info.url,
-                api_key=info.authorization,
+                api_key=info.api_key,
                 tools=current_settings.tools,
             )
             self.settings_token = grafana_settings.set(new_settings)
