@@ -1,6 +1,7 @@
 import enum
 from types import MethodType
 
+from mcp.server import FastMCP
 import typer
 
 from . import mcp
@@ -25,7 +26,7 @@ def run(transport: Transport = Transport.stdio, header_auth: bool = False):
     mcp.run(transport.value)
 
 
-async def run_sse_async(self) -> None:
+async def run_sse_async(self: FastMCP) -> None:
     """
     Run the server using SSE transport, with a middleware that extracts
     Grafana authentication information from the request headers.
