@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from mcp.server import FastMCP
 from starlette.datastructures import Headers
+from starlette.exceptions import HTTPException
 
 from .client import GrafanaClient, grafana_client
 from .settings import GrafanaSettings, grafana_settings
@@ -36,8 +37,9 @@ class GrafanaMiddleware:
     This should be used as a context manager before handling the /sse request.
     """
 
-    def __init__(self, request):
+    def __init__(self, request, fail_if_unset=True):
         self.request = request
+        self.fail_if_unset = fail_if_unset
         self.settings_token = None
         self.client_token = None
 
@@ -53,6 +55,8 @@ class GrafanaMiddleware:
             self.client_token = grafana_client.set(
                 GrafanaClient.from_settings(new_settings)
             )
+        elif self.fail_if_unset:
+            raise HTTPException(status_code=403, detail="No Grafana settings found.")
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.settings_token is not None:

@@ -5,6 +5,7 @@ from typing import AsyncIterator
 
 import anyio
 import httpx
+from mcp.server import FastMCP
 from mcp.types import (
     LATEST_PROTOCOL_VERSION,
     CallToolResult,
@@ -21,10 +22,17 @@ from mcp.types import (
 import pytest
 from httpx_sse import aconnect_sse
 
-from mcp_grafana import mcp
+from mcp_grafana.tools import add_tools
 from mcp_grafana.middleware import run_sse_async_with_middleware
 
 from pytest_httpserver import HTTPServer
+
+
+@pytest.fixture
+def mcp():
+    mcp = FastMCP("grafana")
+    add_tools(mcp)
+    return mcp
 
 
 class TestMiddleware:
@@ -36,7 +44,28 @@ class TestMiddleware:
     """
 
     @pytest.mark.asyncio
-    async def test_multiple_requests(self):
+    async def test_no_headers_provided(self, mcp: FastMCP):
+        """
+        Ensure that the middleware fails if no headers are provided.
+        """
+
+        # Monkeypatch the MCP server to use our middleware.
+        mcp.run_sse_async = MethodType(run_sse_async_with_middleware, mcp)
+        mcp.settings.host = "127.0.0.1"
+        mcp.settings.port = 9500
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(mcp.run_sse_async, name="mcp")
+            # Wait for the server to start.
+            await asyncio.sleep(0.1)
+            client = httpx.AsyncClient(
+                base_url=f"http://{mcp.settings.host}:{mcp.settings.port}"
+            )
+            resp = await client.get("/sse")
+            assert resp.status_code == httpx.codes.FORBIDDEN
+            tg.cancel_scope.cancel()
+
+    @pytest.mark.asyncio
+    async def test_multiple_requests(self, mcp: FastMCP):
         """
         Ensure that the contextvars do not leak across requests.
 
