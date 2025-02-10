@@ -38,7 +38,8 @@ class GrafanaMiddleware:
 
     def __init__(self, request):
         self.request = request
-        self.token = None
+        self.settings_token = None
+        self.client_token = None
 
     async def __aenter__(self):
         if (info := GrafanaInfo.from_headers(self.request.headers)) is not None:
@@ -54,8 +55,10 @@ class GrafanaMiddleware:
             )
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.token is not None:
-            grafana_settings.reset(self.token)
+        if self.settings_token is not None:
+            grafana_settings.reset(self.settings_token)
+        if self.client_token is not None:
+            grafana_client.reset(self.client_token)
 
 
 async def run_sse_async_with_middleware(self: FastMCP) -> None:
