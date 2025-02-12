@@ -69,10 +69,6 @@ class TestMiddleware:
         """
         Ensure that the contextvars do not leak across requests.
 
-        This is a bit of a tricky test, since we're not actually
-        testing the middleware itself, but rather the contextvars
-        that it uses.
-
         We need to:
             1. Start a couple of mock Grafana servers
             2. Start our MCP server
