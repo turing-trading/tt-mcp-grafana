@@ -4,7 +4,6 @@ from typing import Literal
 import anyio
 import uvicorn
 from mcp.server import FastMCP
-from starlette.requests import Request
 
 from .tools import add_tools
 
@@ -18,14 +17,14 @@ class Transport(enum.StrEnum):
 class GrafanaMCP(FastMCP):
     async def run_http_async(self) -> None:
         from starlette.applications import Starlette
-        from starlette.routing import Route
+        from starlette.routing import Mount
 
         from .transports.http import handle_message
 
-        async def handle_http(request: Request):
-            async with handle_message(
-                request.scope, request.receive, request._send
-            ) as (
+        async def handle_http(scope, receive, send):
+            if scope["type"] != "http":
+                raise ValueError("Expected HTTP request")
+            async with handle_message(scope, receive, send) as (
                 read_stream,
                 write_stream,
             ):
@@ -37,9 +36,7 @@ class GrafanaMCP(FastMCP):
 
         starlette_app = Starlette(
             debug=self.settings.debug,
-            routes=[
-                Route("/mcp", endpoint=handle_http, methods=["POST"]),
-            ],
+            routes=[Mount("/", app=handle_http)],
         )
 
         config = uvicorn.Config(
