@@ -145,12 +145,23 @@ async def handle_message(scope: Scope, receive: Receive, send: Send):
                 await response(scope, receive, send)
                 return
 
-            # As part of the MCP spec we need to initialize first.
+            # As part of the MCP spec we need to initialize before we can handle
+            # any other messages; the server has this assumption embedded in it.
             # In a stateful flow (e.g. stdio or sse transports) the client would
             # send an initialize request to the server, and the server would send
             # a response back to the client. In this case we're trying to be stateless,
-            # so we'll handle the initialization ourselves.
-            await initialize(read_stream_writer, write_stream_reader)
+            # so we'll handle the initialization ourselves, unless this happens to be
+            # an initialization request.
+            try:
+                types.InitializeRequest.model_validate(
+                    client_message.root.model_dump(
+                        by_alias=True, mode="json", exclude_none=True
+                    )
+                )
+                logger.debug("Skipping automatic initialization")
+            except ValidationError:
+                logger.debug("Automatically handling initialization")
+                await initialize(read_stream_writer, write_stream_reader)
 
             # Alright, now we can send the client message.
             logger.debug("Sending client message")
