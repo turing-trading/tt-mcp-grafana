@@ -11,7 +11,7 @@ from mcp import types
 from pydantic import ValidationError
 from starlette.datastructures import Headers
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..client import GrafanaClient, grafana_client
@@ -155,6 +155,12 @@ async def handle_message(scope: Scope, receive: Receive, send: Send):
             # Alright, now we can send the client message.
             logger.debug("Sending client message")
             await read_stream_writer.send(client_message)
+
+            if isinstance(client_message.root, types.JSONRPCNotification):
+                # Notifications don't have a response, so we don't need to wait for one.
+                response = PlainTextResponse("Accepted", status_code=202)
+                await response(scope, receive, send)
+                return
 
             # Wait for the server's response, and forward it to the client.
             server_message = await write_stream_reader.receive()
