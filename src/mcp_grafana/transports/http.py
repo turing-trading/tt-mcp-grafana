@@ -139,15 +139,6 @@ async def handle_message(scope: Scope, receive: Receive, send: Send):
             try:
                 client_message = types.JSONRPCMessage.model_validate(json)
                 logger.debug(f"Validated client message: {client_message}")
-                # The server does this internally but we don't get nice error
-                # handling; do it ourselves here and return a correct status
-                # code.
-                types.ClientRequest.model_validate(
-                    client_message.root.model_dump(
-                        by_alias=True, mode="json", exclude_none=True
-                    )
-                )
-                logger.debug("Validated client request")
             except ValidationError as err:
                 logger.error(f"Failed to validate message: {err}")
                 response = Response(f"Invalid message: {err}", status_code=400)
