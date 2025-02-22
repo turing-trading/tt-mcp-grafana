@@ -8,18 +8,21 @@ It's a bit messy for now because it came out of a Hackathon.
 We should separate HTTP types from tool types.
 """
 
+import json
 import math
 from datetime import datetime
-from typing import Any
+from typing import Any, List
 
 import httpx
-from pydantic import UUID4
+from pydantic import UUID4, TypeAdapter
 
 from .settings import grafana_settings
 from .grafana_types import (
     AddActivityToIncidentArguments,
     CreateIncidentArguments,
     CreateSiftInvestigationArguments,
+    Datasource,
+    IncidentPreview,
     QueryIncidentPreviewsRequest,
     Query,
     SearchDashboardsArguments,
@@ -64,8 +67,10 @@ class GrafanaClient:
             raise GrafanaError(r.read().decode())
         return r.read()
 
-    async def list_datasources(self) -> bytes:
-        return await self.get("/api/datasources")
+    async def list_datasources(self) -> List[Datasource]:
+        response = await self.get("/api/datasources")
+        ta = TypeAdapter(List[Datasource])
+        return ta.validate_json(response)
 
     async def get_datasource(
         self, uid: str | None = None, name: str | None = None
@@ -90,11 +95,16 @@ class GrafanaClient:
         return await self.get(f"/api/dashboards/uid/{dashboard_uid}")
 
     # TODO: split incident stuff into a separate client.
-    async def list_incidents(self, body: QueryIncidentPreviewsRequest) -> bytes:
-        return await self.post(
+    async def list_incidents(
+        self, body: QueryIncidentPreviewsRequest
+    ) -> List[IncidentPreview]:
+        response = await self.post(
             "/api/plugins/grafana-incident-app/resources/api/IncidentsService.QueryIncidentPreviews",
             json=body.model_dump(),
         )
+        response = json.loads(response)
+        ta = TypeAdapter(List[IncidentPreview])
+        return ta.validate_python(response["incidentPreviews"])
 
     async def create_incident(self, arguments: CreateIncidentArguments) -> bytes:
         return await self.post(

@@ -31,7 +31,9 @@ class ListIncidentsArguments(BaseModel):
     )
 
 
-async def list_incidents(arguments: ListIncidentsArguments) -> bytes:
+async def list_incidents(
+    arguments: ListIncidentsArguments = ListIncidentsArguments(),
+) -> bytes:
     """
     List incidents from the Grafana Incident incident management tool.
 
