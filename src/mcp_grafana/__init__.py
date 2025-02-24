@@ -54,7 +54,7 @@ class GrafanaMCP(FastMCP):
         Args:
             transport: Transport protocol to use ("stdio" or "sse")
         """
-        if transport not in Transport:
+        if transport not in Transport.__members__:
             raise ValueError(f"Unknown transport: {transport}")
 
         if transport == "stdio":
