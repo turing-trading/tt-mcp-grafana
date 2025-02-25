@@ -179,10 +179,16 @@ async def http_client(url: str, headers: dict[str, Any] | None = None):
                 logger.debug("Waiting for request body")
                 body = await write_stream_reader.receive()
 
-                logger.debug(f"Connecting to HTTP endpoint: {url}")
+                u = httpx.URL(url)
+                u_cleaned = (
+                    u
+                    if u.userinfo == b""
+                    else u.copy_with(username="<redacted>", password="<redacted>")
+                )
+                logger.debug(f"Connecting to HTTP endpoint: {u_cleaned}")
                 async with httpx.AsyncClient(headers=headers) as client:
                     response = await client.post(
-                        url, content=body.model_dump_json(by_alias=True)
+                        u, content=body.model_dump_json(by_alias=True)
                     )
                     logger.debug(f"Received response: {response.status_code}")
                     message = types.JSONRPCMessage.model_validate_json(response.content)
