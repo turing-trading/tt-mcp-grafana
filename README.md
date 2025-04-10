@@ -39,6 +39,11 @@ This provides access to your Grafana instance and the surrounding ecosystem.
   - [x] Get current on-call users
   - [x] List teams and users
   - [ ] List alert groups
+- [x] Access Grafana Alloy functionality
+  - [x] List components
+  - [x] Get component details
+  - [x] Analyze pipeline components
+  - [x] Get component health status
 
 The list of tools is configurable, so you can choose which tools you want to make available to the MCP client.
 This is useful if you don't use certain functionality or if you don't want to take up too much of the context window.
@@ -72,6 +77,10 @@ This is useful if you don't use certain functionality or if you don't want to ta
 | `get_current_oncall_users`        | OnCall      | Get users currently on-call for a specific schedule                |
 | `list_oncall_teams`               | OnCall      | List teams from Grafana OnCall                                     |
 | `list_oncall_users`               | OnCall      | List users from Grafana OnCall                                     |
+| `list_alloy_components`           | Alloy       | List all components in the Alloy instance                          |
+| `get_alloy_component_details`     | Alloy       | Get detailed information about a specific component                |
+| `analyze_alloy_pipeline`          | Alloy       | Analyze components of a specific type (loki, prometheus, otel)     |
+| `get_alloy_component_health`      | Alloy       | Get health status of all components                                |
 
 ## Usage
 
@@ -98,7 +107,8 @@ This is useful if you don't use certain functionality or if you don't want to ta
          "args": [],
          "env": {
            "GRAFANA_URL": "http://localhost:3000",
-           "GRAFANA_API_KEY": "<your service account token>"
+           "GRAFANA_API_KEY": "<your service account token>",
+           "ALLOY_HOST": "<alloy-host:port>"  // Optional: defaults to localhost:12345
          }
        }
      }
@@ -106,6 +116,16 @@ This is useful if you don't use certain functionality or if you don't want to ta
    ```
 
 > Note: if you see `Error: spawn mcp-grafana ENOENT` in Claude Desktop, you need to specify the full path to `mcp-grafana`.
+
+## Environment Variables
+
+The following environment variables can be used to configure the server:
+
+| Variable          | Description                                           | Default            |
+|------------------|-------------------------------------------------------|-------------------|
+| `GRAFANA_URL`    | The URL of your Grafana instance                      | http://localhost:3000 |
+| `GRAFANA_API_KEY`| Your Grafana service account token                    | -                 |
+| `ALLOY_HOST`     | The host and port of your Alloy instance             | localhost:12345   |
 
 ## Development
 
