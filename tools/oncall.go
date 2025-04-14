@@ -109,7 +109,7 @@ type ListOnCallAlertGroupsParams struct {
 	State         string `json:"state,omitempty" jsonschema:"description=Possible values: new, acknowledged, resolved or silenced"`
 	TeamID        string `json:"team_id,omitempty" jsonschema:"description=Exact match, team ID"`
 	StartedAt     string `json:"started_at,omitempty" jsonschema:"description=Filter alert groups by start time in ISO 8601 format with start and end timestamps separated by underscore. Example: 2024-03-20T10:00:00_2024-03-21T10:00:00"`
-	Labels        string `json:"labels,omitempty" jsonschema:"description=Filter alert groups by labels. Expected format: key1:value1,key2:value2"`
+	Labels        string `json:"labels,omitempty" jsonschema:"description=Filter alert groups by labels. If a team name is provided don't include the team name in the labels. Expected format: key1:value1,key2:value2"`
 	TeamName      string `json:"team_name,omitempty" jsonschema:"description=Team name. If provided, returns only alert groups for this team. It may not be an exact match."`
 	Name          string `json:"name,omitempty" jsonschema:"description=Filter alert groups by name"`
 	Page          int    `json:"page,omitempty" jsonschema:"description=The page number to return (1-based)"`
@@ -273,8 +273,6 @@ func getAlertServiceFromContext(ctx context.Context) (*aapi.AlertService, error)
 	return aapi.NewAlertService(client), nil
 }
 
-// --- API Call Implementation Functions ---
-
 // fetchOnCallSchedules performs the API call to list or get OnCall schedules.
 func fetchOnCallSchedules(ctx context.Context, args ListOnCallSchedulesParams) ([]*ScheduleSummary, error) {
 	scheduleService, err := getScheduleServiceFromContext(ctx)
@@ -303,9 +301,6 @@ func fetchOnCallSchedules(ctx context.Context, args ListOnCallSchedulesParams) (
 	listOptions := &aapi.ListScheduleOptions{}
 	if args.Page > 0 {
 		listOptions.Page = args.Page
-	} else {
-		// Default to first page if not specified
-		listOptions.Page = 1
 	}
 
 	if args.TeamID != "" {
@@ -458,13 +453,9 @@ func fetchOnCallUsers(ctx context.Context, args ListOnCallUsersParams) ([]*aapi.
 		return []*aapi.User{user}, nil
 	}
 
-	// Set up list options
 	listOptions := &aapi.ListUserOptions{}
 	if args.Page > 0 {
 		listOptions.Page = args.Page
-	} else {
-		// Default to first page if not specified
-		listOptions.Page = 1
 	}
 
 	if args.Username != "" {
@@ -487,7 +478,10 @@ func fetchOnCallAlertGroups(ctx context.Context, args ListOnCallAlertGroupsParam
 	}
 
 	// Build the options based on the provided args
-	options := buildAlertGroupOptions(args)
+	options, err := buildAlertGroupOptions(ctx, args)
+	if err != nil {
+		return nil, fmt.Errorf("building alert group options: %w", err)
+	}
 
 	// Set page option
 	if args.Page > 0 {
@@ -506,8 +500,23 @@ func fetchOnCallAlertGroups(ctx context.Context, args ListOnCallAlertGroupsParam
 }
 
 // Helper function to build alert group options
-func buildAlertGroupOptions(args ListOnCallAlertGroupsParams) *aapi.ListAlertGroupOptions {
+func buildAlertGroupOptions(ctx context.Context, args ListOnCallAlertGroupsParams) (*aapi.ListAlertGroupOptions, error) {
 	options := &aapi.ListAlertGroupOptions{}
+
+	// If team name is provided, search for the team ID
+	if args.TeamName != "" {
+		teams, err := fetchOnCallTeams(ctx, ListOnCallTeamsParams{Page: 1})
+		if err != nil {
+			return nil, fmt.Errorf("listing OnCall teams: %w", err)
+		} else {
+			for _, team := range teams {
+				if team.Name == args.TeamName {
+					options.TeamID = team.ID
+					break
+				}
+			}
+		}
+	}
 
 	if args.ID != "" {
 		options.AlertGroupID = args.ID
@@ -533,11 +542,8 @@ func buildAlertGroupOptions(args ListOnCallAlertGroupsParams) *aapi.ListAlertGro
 	if args.Labels != "" {
 		options.Labels = strings.Split(args.Labels, ",")
 	}
-	if args.TeamName != "" {
-		fmt.Printf("Warning: Filtering alert groups by TeamName ('%s') is not directly supported by the underlying API client and is being ignored.\n", args.TeamName)
-	}
 
-	return options
+	return options, nil
 }
 
 // fetchOnCallAlerts performs the API call to get alerts for a specific alert group.
@@ -554,9 +560,6 @@ func fetchOnCallAlerts(ctx context.Context, args GetOnCallAlertsParams) ([]*aapi
 
 	if args.Page > 0 {
 		listOptions.Page = args.Page
-	} else {
-		// Default to first page if not specified
-		listOptions.Page = 1
 	}
 
 	response, _, err := alertService.ListAlerts(listOptions)
