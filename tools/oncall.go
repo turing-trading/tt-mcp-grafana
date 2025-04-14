@@ -299,10 +299,15 @@ func fetchOnCallSchedules(ctx context.Context, args ListOnCallSchedulesParams) (
 		return []*ScheduleSummary{summary}, nil
 	}
 
+	// Set up pagination options
 	listOptions := &aapi.ListScheduleOptions{}
 	if args.Page > 0 {
 		listOptions.Page = args.Page
+	} else {
+		// Default to first page if not specified
+		listOptions.Page = 1
 	}
+
 	if args.TeamID != "" {
 		listOptions.TeamID = args.TeamID
 	}
@@ -312,9 +317,13 @@ func fetchOnCallSchedules(ctx context.Context, args ListOnCallSchedulesParams) (
 		return nil, fmt.Errorf("listing OnCall schedules: %w", err)
 	}
 
-	// Convert schedules to summaries
-	summaries := make([]*ScheduleSummary, 0, len(response.Schedules))
-	for _, schedule := range response.Schedules {
+	return convertSchedulesToSummaries(response.Schedules), nil
+}
+
+// Helper function to convert schedules to summaries
+func convertSchedulesToSummaries(schedules []*aapi.Schedule) []*ScheduleSummary {
+	summaries := make([]*ScheduleSummary, 0, len(schedules))
+	for _, schedule := range schedules {
 		summary := &ScheduleSummary{
 			ID:       schedule.ID,
 			Name:     schedule.Name,
@@ -326,8 +335,7 @@ func fetchOnCallSchedules(ctx context.Context, args ListOnCallSchedulesParams) (
 		}
 		summaries = append(summaries, summary)
 	}
-
-	return summaries, nil
+	return summaries
 }
 
 // fetchOnCallShift performs the API call to get details for a specific OnCall shift.
@@ -390,23 +398,49 @@ func fetchCurrentOnCallUsers(ctx context.Context, args GetCurrentOnCallUsersPara
 }
 
 // fetchOnCallTeams performs the API call to list OnCall teams.
+// This function automatically fetches all pages when no specific page is requested.
 func fetchOnCallTeams(ctx context.Context, args ListOnCallTeamsParams) ([]*aapi.Team, error) {
 	teamService, err := getTeamServiceFromContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting OnCall team service: %w", err)
 	}
 
-	listOptions := &aapi.ListTeamOptions{}
+	// If a specific page is requested, just get that page
 	if args.Page > 0 {
+		listOptions := &aapi.ListTeamOptions{}
 		listOptions.Page = args.Page
+
+		response, _, err := teamService.ListTeams(listOptions)
+		if err != nil {
+			return nil, fmt.Errorf("listing OnCall teams: %w", err)
+		}
+
+		return response.Teams, nil
 	}
 
-	response, _, err := teamService.ListTeams(listOptions)
-	if err != nil {
-		return nil, fmt.Errorf("listing OnCall teams: %w", err)
+	// Otherwise, fetch all pages
+	var allTeams []*aapi.Team
+	currentPage := 1
+
+	for {
+		listOptions := &aapi.ListTeamOptions{}
+		listOptions.Page = currentPage
+
+		response, _, err := teamService.ListTeams(listOptions)
+		if err != nil {
+			return nil, fmt.Errorf("listing OnCall teams page %d: %w", currentPage, err)
+		}
+
+		allTeams = append(allTeams, response.Teams...)
+
+		// Check if we've received fewer items than the max per page, indicating the last page
+		if len(response.Teams) < 25 { // API typically returns 25 items per page
+			break
+		}
+		currentPage++
 	}
 
-	return response.Teams, nil
+	return allTeams, nil
 }
 
 // fetchOnCallUsers performs the API call to list or get OnCall users.
@@ -424,11 +458,15 @@ func fetchOnCallUsers(ctx context.Context, args ListOnCallUsersParams) ([]*aapi.
 		return []*aapi.User{user}, nil
 	}
 
-	// Otherwise, list all users
+	// Set up list options
 	listOptions := &aapi.ListUserOptions{}
 	if args.Page > 0 {
 		listOptions.Page = args.Page
+	} else {
+		// Default to first page if not specified
+		listOptions.Page = 1
 	}
+
 	if args.Username != "" {
 		listOptions.Username = args.Username
 	}
@@ -448,42 +486,58 @@ func fetchOnCallAlertGroups(ctx context.Context, args ListOnCallAlertGroupsParam
 		return nil, fmt.Errorf("getting OnCall alert group service: %w", err)
 	}
 
-	listOptions := &aapi.ListAlertGroupOptions{}
+	// Build the options based on the provided args
+	options := buildAlertGroupOptions(args)
 
+	// Set page option
 	if args.Page > 0 {
-		listOptions.Page = args.Page
-	}
-	if args.ID != "" {
-		listOptions.AlertGroupID = args.ID
-	}
-	if args.RouteID != "" {
-		listOptions.RouteID = args.RouteID
-	}
-	if args.IntegrationID != "" {
-		listOptions.IntegrationID = args.IntegrationID
-	}
-	if args.State != "" {
-		listOptions.State = args.State
-	}
-	if args.Name != "" {
-		listOptions.Name = args.Name
-	}
-	if args.TeamID != "" {
-		listOptions.TeamID = args.TeamID
-	}
-	if args.StartedAt != "" {
-		listOptions.StartedAt = args.StartedAt
-	}
-	if args.Labels != "" {
-		listOptions.Labels = strings.Split(args.Labels, ",")
+		options.Page = args.Page
+	} else {
+		// Default to first page if not specified
+		options.Page = 1
 	}
 
-	response, _, err := alertGroupService.ListAlertGroups(listOptions)
+	response, _, err := alertGroupService.ListAlertGroups(options)
 	if err != nil {
 		return nil, fmt.Errorf("listing OnCall alert groups: %w", err)
 	}
 
 	return response.AlertGroups, nil
+}
+
+// Helper function to build alert group options
+func buildAlertGroupOptions(args ListOnCallAlertGroupsParams) *aapi.ListAlertGroupOptions {
+	options := &aapi.ListAlertGroupOptions{}
+
+	if args.ID != "" {
+		options.AlertGroupID = args.ID
+	}
+	if args.RouteID != "" {
+		options.RouteID = args.RouteID
+	}
+	if args.IntegrationID != "" {
+		options.IntegrationID = args.IntegrationID
+	}
+	if args.State != "" {
+		options.State = args.State
+	}
+	if args.Name != "" {
+		options.Name = args.Name
+	}
+	if args.TeamID != "" {
+		options.TeamID = args.TeamID
+	}
+	if args.StartedAt != "" {
+		options.StartedAt = args.StartedAt
+	}
+	if args.Labels != "" {
+		options.Labels = strings.Split(args.Labels, ",")
+	}
+	if args.TeamName != "" {
+		fmt.Printf("Warning: Filtering alert groups by TeamName ('%s') is not directly supported by the underlying API client and is being ignored.\n", args.TeamName)
+	}
+
+	return options
 }
 
 // fetchOnCallAlerts performs the API call to get alerts for a specific alert group.
@@ -493,11 +547,16 @@ func fetchOnCallAlerts(ctx context.Context, args GetOnCallAlertsParams) ([]*aapi
 		return nil, fmt.Errorf("getting OnCall alert service: %w", err)
 	}
 
+	// Set up list options
 	listOptions := &aapi.ListAlertOptions{
 		AlertGroupID: args.AlertGroupID,
 	}
+
 	if args.Page > 0 {
 		listOptions.Page = args.Page
+	} else {
+		// Default to first page if not specified
+		listOptions.Page = 1
 	}
 
 	response, _, err := alertService.ListAlerts(listOptions)
