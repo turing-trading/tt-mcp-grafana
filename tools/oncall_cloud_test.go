@@ -45,7 +45,7 @@ func TestCloudOnCallSchedules(t *testing.T) {
 
 	// Test listing all schedules
 	t.Run("list all schedules", func(t *testing.T) {
-		result, err := listOnCallSchedules(ctx, ListOnCallSchedulesParams{})
+		result, err := listOnCallSchedulesHandler(ctx, ListOnCallSchedulesParams{})
 		require.NoError(t, err, "Should not error when listing schedules")
 		assert.NotNil(t, result, "Result should not be nil")
 	})
@@ -53,18 +53,18 @@ func TestCloudOnCallSchedules(t *testing.T) {
 	// Test pagination
 	t.Run("list schedules with pagination", func(t *testing.T) {
 		// Get first page
-		page1, err := listOnCallSchedules(ctx, ListOnCallSchedulesParams{Page: 1})
+		page1, err := listOnCallSchedulesHandler(ctx, ListOnCallSchedulesParams{Page: 1})
 		require.NoError(t, err, "Should not error when listing schedules page 1")
 		assert.NotNil(t, page1, "Page 1 should not be nil")
 
 		// Get second page
-		page2, err := listOnCallSchedules(ctx, ListOnCallSchedulesParams{Page: 2})
+		page2, err := listOnCallSchedulesHandler(ctx, ListOnCallSchedulesParams{Page: 2})
 		require.NoError(t, err, "Should not error when listing schedules page 2")
 		assert.NotNil(t, page2, "Page 2 should not be nil")
 	})
 
 	// Get a team ID from an existing schedule to test filtering
-	schedules, err := listOnCallSchedules(ctx, ListOnCallSchedulesParams{})
+	schedules, err := listOnCallSchedulesHandler(ctx, ListOnCallSchedulesParams{})
 	require.NoError(t, err, "Should not error when listing schedules")
 
 	if len(schedules) > 0 && schedules[0].TeamID != "" {
@@ -72,7 +72,7 @@ func TestCloudOnCallSchedules(t *testing.T) {
 
 		// Test filtering by team ID
 		t.Run("list schedules by team ID", func(t *testing.T) {
-			result, err := listOnCallSchedules(ctx, ListOnCallSchedulesParams{
+			result, err := listOnCallSchedulesHandler(ctx, ListOnCallSchedulesParams{
 				TeamID: teamID,
 			})
 			require.NoError(t, err, "Should not error when listing schedules by team")
@@ -87,7 +87,7 @@ func TestCloudOnCallSchedules(t *testing.T) {
 	if len(schedules) > 0 {
 		scheduleID := schedules[0].ID
 		t.Run("get specific schedule", func(t *testing.T) {
-			result, err := listOnCallSchedules(ctx, ListOnCallSchedulesParams{
+			result, err := listOnCallSchedulesHandler(ctx, ListOnCallSchedulesParams{
 				ScheduleID: scheduleID,
 			})
 			require.NoError(t, err, "Should not error when getting specific schedule")
@@ -107,7 +107,7 @@ func TestCloudOnCallShift(t *testing.T) {
 	ctx := createOnCallCloudTestContext(t)
 
 	// First get a schedule to find a valid shift
-	schedules, err := listOnCallSchedules(ctx, ListOnCallSchedulesParams{})
+	schedules, err := listOnCallSchedulesHandler(ctx, ListOnCallSchedulesParams{})
 	require.NoError(t, err, "Should not error when listing schedules")
 	require.NotEmpty(t, schedules, "Should have at least one schedule to test with")
 	require.NotEmpty(t, schedules[0].Shifts, "Schedule should have at least one shift")
@@ -117,7 +117,7 @@ func TestCloudOnCallShift(t *testing.T) {
 
 	// Test getting shift details with valid ID
 	t.Run("get shift details", func(t *testing.T) {
-		result, err := getOnCallShift(ctx, GetOnCallShiftParams{
+		result, err := getOnCallShiftHandler(ctx, GetOnCallShiftParams{
 			ShiftID: shiftID,
 		})
 		require.NoError(t, err, "Should not error when getting shift details")
@@ -126,7 +126,7 @@ func TestCloudOnCallShift(t *testing.T) {
 	})
 
 	t.Run("get shift with invalid ID", func(t *testing.T) {
-		_, err := getOnCallShift(ctx, GetOnCallShiftParams{
+		_, err := getOnCallShiftHandler(ctx, GetOnCallShiftParams{
 			ShiftID: "invalid-shift-id",
 		})
 		assert.Error(t, err, "Should error when getting shift with invalid ID")
@@ -137,7 +137,7 @@ func TestCloudGetCurrentOnCallUsers(t *testing.T) {
 	ctx := createOnCallCloudTestContext(t)
 
 	// First get a schedule to use for testing
-	schedules, err := listOnCallSchedules(ctx, ListOnCallSchedulesParams{})
+	schedules, err := listOnCallSchedulesHandler(ctx, ListOnCallSchedulesParams{})
 	require.NoError(t, err, "Should not error when listing schedules")
 	require.NotEmpty(t, schedules, "Should have at least one schedule to test with")
 
@@ -145,7 +145,7 @@ func TestCloudGetCurrentOnCallUsers(t *testing.T) {
 
 	// Test getting current on-call users
 	t.Run("get current on-call users", func(t *testing.T) {
-		result, err := getCurrentOnCallUsers(ctx, GetCurrentOnCallUsersParams{
+		result, err := getCurrentOnCallUsersHandler(ctx, GetCurrentOnCallUsersParams{
 			ScheduleID: scheduleID,
 		})
 		require.NoError(t, err, "Should not error when getting current on-call users")
@@ -163,7 +163,7 @@ func TestCloudGetCurrentOnCallUsers(t *testing.T) {
 	})
 
 	t.Run("get current on-call users with invalid schedule ID", func(t *testing.T) {
-		_, err := getCurrentOnCallUsers(ctx, GetCurrentOnCallUsersParams{
+		_, err := getCurrentOnCallUsersHandler(ctx, GetCurrentOnCallUsersParams{
 			ScheduleID: "invalid-schedule-id",
 		})
 		assert.Error(t, err, "Should error when getting current on-call users with invalid schedule ID")
@@ -174,7 +174,7 @@ func TestCloudOnCallTeams(t *testing.T) {
 	ctx := createOnCallCloudTestContext(t)
 
 	t.Run("list teams", func(t *testing.T) {
-		result, err := listOnCallTeams(ctx, ListOnCallTeamsParams{})
+		result, err := listOnCallTeamsHandler(ctx, ListOnCallTeamsParams{})
 		require.NoError(t, err, "Should not error when listing teams")
 		assert.NotNil(t, result, "Result should not be nil")
 
@@ -188,12 +188,12 @@ func TestCloudOnCallTeams(t *testing.T) {
 	// Test pagination
 	t.Run("list teams with pagination", func(t *testing.T) {
 		// Get first page
-		page1, err := listOnCallTeams(ctx, ListOnCallTeamsParams{Page: 1})
+		page1, err := listOnCallTeamsHandler(ctx, ListOnCallTeamsParams{Page: 1})
 		require.NoError(t, err, "Should not error when listing teams page 1")
 		assert.NotNil(t, page1, "Page 1 should not be nil")
 
 		// Get second page
-		page2, err := listOnCallTeams(ctx, ListOnCallTeamsParams{Page: 2})
+		page2, err := listOnCallTeamsHandler(ctx, ListOnCallTeamsParams{Page: 2})
 		require.NoError(t, err, "Should not error when listing teams page 2")
 		assert.NotNil(t, page2, "Page 2 should not be nil")
 	})
@@ -203,7 +203,7 @@ func TestCloudOnCallUsers(t *testing.T) {
 	ctx := createOnCallCloudTestContext(t)
 
 	t.Run("list all users", func(t *testing.T) {
-		result, err := listOnCallUsers(ctx, ListOnCallUsersParams{})
+		result, err := listOnCallUsersHandler(ctx, ListOnCallUsersParams{})
 		require.NoError(t, err, "Should not error when listing users")
 		assert.NotNil(t, result, "Result should not be nil")
 
@@ -217,18 +217,18 @@ func TestCloudOnCallUsers(t *testing.T) {
 	// Test pagination
 	t.Run("list users with pagination", func(t *testing.T) {
 		// Get first page
-		page1, err := listOnCallUsers(ctx, ListOnCallUsersParams{Page: 1})
+		page1, err := listOnCallUsersHandler(ctx, ListOnCallUsersParams{Page: 1})
 		require.NoError(t, err, "Should not error when listing users page 1")
 		assert.NotNil(t, page1, "Page 1 should not be nil")
 
 		// Get second page
-		page2, err := listOnCallUsers(ctx, ListOnCallUsersParams{Page: 2})
+		page2, err := listOnCallUsersHandler(ctx, ListOnCallUsersParams{Page: 2})
 		require.NoError(t, err, "Should not error when listing users page 2")
 		assert.NotNil(t, page2, "Page 2 should not be nil")
 	})
 
 	// Get a user ID and username from the list to test filtering
-	users, err := listOnCallUsers(ctx, ListOnCallUsersParams{})
+	users, err := listOnCallUsersHandler(ctx, ListOnCallUsersParams{})
 	require.NoError(t, err, "Should not error when listing users")
 	require.NotEmpty(t, users, "Should have at least one user to test with")
 
@@ -236,7 +236,7 @@ func TestCloudOnCallUsers(t *testing.T) {
 	username := users[0].Username
 
 	t.Run("get user by ID", func(t *testing.T) {
-		result, err := listOnCallUsers(ctx, ListOnCallUsersParams{
+		result, err := listOnCallUsersHandler(ctx, ListOnCallUsersParams{
 			UserID: userID,
 		})
 		require.NoError(t, err, "Should not error when getting user by ID")
@@ -247,7 +247,7 @@ func TestCloudOnCallUsers(t *testing.T) {
 	})
 
 	t.Run("get user by username", func(t *testing.T) {
-		result, err := listOnCallUsers(ctx, ListOnCallUsersParams{
+		result, err := listOnCallUsersHandler(ctx, ListOnCallUsersParams{
 			Username: username,
 		})
 		require.NoError(t, err, "Should not error when getting user by username")
@@ -258,17 +258,74 @@ func TestCloudOnCallUsers(t *testing.T) {
 	})
 
 	t.Run("get user with invalid ID", func(t *testing.T) {
-		_, err := listOnCallUsers(ctx, ListOnCallUsersParams{
+		_, err := listOnCallUsersHandler(ctx, ListOnCallUsersParams{
 			UserID: "invalid-user-id",
 		})
 		assert.Error(t, err, "Should error when getting user with invalid ID")
 	})
 
 	t.Run("get user with invalid username", func(t *testing.T) {
-		result, err := listOnCallUsers(ctx, ListOnCallUsersParams{
+		result, err := listOnCallUsersHandler(ctx, ListOnCallUsersParams{
 			Username: "invalid-username",
 		})
 		require.NoError(t, err, "Should not error when getting user with invalid username")
 		assert.Empty(t, result, "Should return empty result set for invalid username")
+	})
+}
+
+// Add tests for alert groups and alerts
+func TestCloudOnCallAlertGroups(t *testing.T) {
+	ctx := createOnCallCloudTestContext(t)
+
+	t.Run("list alert groups", func(t *testing.T) {
+		result, err := listOnCallAlertGroupsHandler(ctx, ListOnCallAlertGroupsParams{})
+		require.NoError(t, err, "Should not error when listing alert groups")
+		assert.NotNil(t, result, "Result should not be nil")
+
+		// Note: The test instance may not have any alert groups
+		// So we don't assert on the length, just that the call succeeds
+	})
+
+	// Test pagination
+	t.Run("list alert groups with pagination", func(t *testing.T) {
+		// Get first page
+		page1, err := listOnCallAlertGroupsHandler(ctx, ListOnCallAlertGroupsParams{Page: 1})
+		require.NoError(t, err, "Should not error when listing alert groups page 1")
+		assert.NotNil(t, page1, "Page 1 should not be nil")
+
+		// Get second page
+		page2, err := listOnCallAlertGroupsHandler(ctx, ListOnCallAlertGroupsParams{Page: 2})
+		require.NoError(t, err, "Should not error when listing alert groups page 2")
+		assert.NotNil(t, page2, "Page 2 should not be nil")
+	})
+}
+
+func TestCloudOnCallAlerts(t *testing.T) {
+	ctx := createOnCallCloudTestContext(t)
+
+	// First try to get an alert group to test with
+	alertGroups, err := listOnCallAlertGroupsHandler(ctx, ListOnCallAlertGroupsParams{})
+	require.NoError(t, err, "Should not error when listing alert groups")
+
+	// This is a conditional test as the test instance may not have any alert groups
+	if len(alertGroups) > 0 {
+		alertGroupID := alertGroups[0].ID
+
+		t.Run("get alerts for alert group", func(t *testing.T) {
+			result, err := getOnCallAlertsHandler(ctx, GetOnCallAlertsParams{
+				AlertGroupID: alertGroupID,
+			})
+			require.NoError(t, err, "Should not error when getting alerts for alert group")
+			assert.NotNil(t, result, "Result should not be nil")
+		})
+	} else {
+		t.Skip("No alert groups available to test alert retrieval")
+	}
+
+	t.Run("get alerts with invalid alert group ID", func(t *testing.T) {
+		_, err := getOnCallAlertsHandler(ctx, GetOnCallAlertsParams{
+			AlertGroupID: "invalid-alert-group-id",
+		})
+		assert.Error(t, err, "Should error when getting alerts with invalid alert group ID")
 	})
 }

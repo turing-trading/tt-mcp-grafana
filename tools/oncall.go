@@ -12,6 +12,144 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+type ListOnCallSchedulesParams struct {
+	TeamID     string `json:"teamId,omitempty" jsonschema:"description=The ID of the team to list schedules for"`
+	ScheduleID string `json:"scheduleId,omitempty" jsonschema:"description=The ID of the schedule to get details for. If provided, returns only that schedule's details"`
+	Page       int    `json:"page,omitempty" jsonschema:"description=The page number to return (1-based)"`
+}
+
+// ScheduleSummary represents a simplified view of an OnCall schedule
+type ScheduleSummary struct {
+	ID       string   `json:"id" jsonschema:"description=The unique identifier of the schedule"`
+	Name     string   `json:"name" jsonschema:"description=The name of the schedule"`
+	TeamID   string   `json:"teamId" jsonschema:"description=The ID of the team this schedule belongs to"`
+	Timezone string   `json:"timezone" jsonschema:"description=The timezone for this schedule"`
+	Shifts   []string `json:"shifts" jsonschema:"description=List of shift IDs in this schedule"`
+}
+
+func listOnCallSchedulesHandler(ctx context.Context, args ListOnCallSchedulesParams) ([]*ScheduleSummary, error) {
+	return fetchOnCallSchedules(ctx, args)
+}
+
+var ListOnCallSchedules = mcpgrafana.MustTool(
+	"list_oncall_schedules",
+	"List OnCall schedules. A schedule is a calendar-based system defining when team members are on-call. Optionally provide a scheduleId to get details for a specific schedule",
+	listOnCallSchedulesHandler,
+)
+
+type GetOnCallShiftParams struct {
+	ShiftID string `json:"shiftId" jsonschema:"required,description=The ID of the shift to get details for"`
+}
+
+func getOnCallShiftHandler(ctx context.Context, args GetOnCallShiftParams) (*aapi.OnCallShift, error) {
+	return fetchOnCallShift(ctx, args)
+}
+
+var GetOnCallShift = mcpgrafana.MustTool(
+	"get_oncall_shift",
+	"Get details for a specific OnCall shift. A shift represents a designated time period within a rotation when a team or individual is actively on-call",
+	getOnCallShiftHandler,
+)
+
+// CurrentOnCallUsers represents the currently on-call users for a schedule
+type CurrentOnCallUsers struct {
+	ScheduleID   string       `json:"scheduleId" jsonschema:"description=The ID of the schedule"`
+	ScheduleName string       `json:"scheduleName" jsonschema:"description=The name of the schedule"`
+	Users        []*aapi.User `json:"users" jsonschema:"description=List of users currently on call"`
+}
+
+type GetCurrentOnCallUsersParams struct {
+	ScheduleID string `json:"scheduleId" jsonschema:"required,description=The ID of the schedule to get current on-call users for"`
+}
+
+func getCurrentOnCallUsersHandler(ctx context.Context, args GetCurrentOnCallUsersParams) (*CurrentOnCallUsers, error) {
+	return fetchCurrentOnCallUsers(ctx, args)
+}
+
+var GetCurrentOnCallUsers = mcpgrafana.MustTool(
+	"get_current_oncall_users",
+	"Get users currently on-call for a specific schedule. A schedule is a calendar-based system defining when team members are on-call. This tool will return info about all users currently on-call for the schedule, regardless of team.",
+	getCurrentOnCallUsersHandler,
+)
+
+type ListOnCallTeamsParams struct {
+	Page int `json:"page,omitempty" jsonschema:"description=The page number to return"`
+}
+
+func listOnCallTeamsHandler(ctx context.Context, args ListOnCallTeamsParams) ([]*aapi.Team, error) {
+	return fetchOnCallTeams(ctx, args)
+}
+
+var ListOnCallTeams = mcpgrafana.MustTool(
+	"list_oncall_teams",
+	"List teams from Grafana OnCall",
+	listOnCallTeamsHandler,
+)
+
+type ListOnCallUsersParams struct {
+	UserID   string `json:"userId,omitempty" jsonschema:"description=The ID of the user to get details for. If provided, returns only that user's details"`
+	Username string `json:"username,omitempty" jsonschema:"description=The username to filter users by. If provided, returns only the user matching this username"`
+	Page     int    `json:"page,omitempty" jsonschema:"description=The page number to return"`
+}
+
+func listOnCallUsersHandler(ctx context.Context, args ListOnCallUsersParams) ([]*aapi.User, error) {
+	return fetchOnCallUsers(ctx, args)
+}
+
+var ListOnCallUsers = mcpgrafana.MustTool(
+	"list_oncall_users",
+	"List users from Grafana OnCall. If user ID is provided, returns details for that specific user. If username is provided, returns the user matching that username",
+	listOnCallUsersHandler,
+)
+
+type ListOnCallAlertGroupsParams struct {
+	ID            string `json:"id,omitempty" jsonschema:"description=Exact match, alert group ID"`
+	RouteID       string `json:"route_id,omitempty" jsonschema:"description=Exact match, route ID"`
+	IntegrationID string `json:"integration_id,omitempty" jsonschema:"description=Exact match, integration ID"`
+	State         string `json:"state,omitempty" jsonschema:"description=Possible values: new, acknowledged, resolved or silenced"`
+	TeamID        string `json:"team_id,omitempty" jsonschema:"description=Exact match, team ID"`
+	StartedAt     string `json:"started_at,omitempty" jsonschema:"description=Filter alert groups by start time in ISO 8601 format with start and end timestamps separated by underscore. Example: 2024-03-20T10:00:00_2024-03-21T10:00:00"`
+	Labels        string `json:"labels,omitempty" jsonschema:"description=Filter alert groups by labels. Expected format: key1:value1,key2:value2"`
+	TeamName      string `json:"team_name,omitempty" jsonschema:"description=Team name. If provided, returns only alert groups for this team. It may not be an exact match."`
+	Name          string `json:"name,omitempty" jsonschema:"description=Filter alert groups by name"`
+	Page          int    `json:"page,omitempty" jsonschema:"description=The page number to return (1-based)"`
+}
+
+func listOnCallAlertGroupsHandler(ctx context.Context, args ListOnCallAlertGroupsParams) ([]*aapi.AlertGroup, error) {
+	return fetchOnCallAlertGroups(ctx, args)
+}
+
+var ListOnCallAlertGroups = mcpgrafana.MustTool(
+	"list_oncall_alert_groups",
+	"List alert groups from Grafana OnCall. Optionally filter by alert group ID, route ID, integration ID, state, team ID, labels, or name.",
+	listOnCallAlertGroupsHandler,
+)
+
+type GetOnCallAlertsParams struct {
+	AlertGroupID string `json:"alertGroupId" jsonschema:"required,description=The ID of the alert group to get alerts for"`
+	Page         int    `json:"page,omitempty" jsonschema:"description=The page number to return (1-based)"`
+}
+
+func getOnCallAlertsHandler(ctx context.Context, args GetOnCallAlertsParams) ([]*aapi.Alert, error) {
+	return fetchOnCallAlerts(ctx, args)
+}
+
+var GetOnCallAlerts = mcpgrafana.MustTool(
+	"get_oncall_alerts",
+	"Get alerts for a specific alert group in Grafana OnCall",
+	getOnCallAlertsHandler,
+)
+
+func AddOnCallTools(mcp *server.MCPServer) {
+	ListOnCallSchedules.Register(mcp)
+	GetOnCallShift.Register(mcp)
+	GetCurrentOnCallUsers.Register(mcp)
+	ListOnCallTeams.Register(mcp)
+	ListOnCallUsers.Register(mcp)
+	ListOnCallAlertGroups.Register(mcp)
+	GetOnCallAlerts.Register(mcp)
+}
+
 // getOnCallURLFromSettings retrieves the OnCall API URL from the Grafana settings endpoint.
 // It makes a GET request to <grafana-url>/api/plugins/grafana-irm-app/settings and extracts
 // the OnCall URL from the jsonData.onCallApiUrl field in the response.
@@ -135,22 +273,10 @@ func getAlertServiceFromContext(ctx context.Context) (*aapi.AlertService, error)
 	return aapi.NewAlertService(client), nil
 }
 
-type ListOnCallSchedulesParams struct {
-	TeamID     string `json:"teamId,omitempty" jsonschema:"description=The ID of the team to list schedules for"`
-	ScheduleID string `json:"scheduleId,omitempty" jsonschema:"description=The ID of the schedule to get details for. If provided, returns only that schedule's details"`
-	Page       int    `json:"page,omitempty" jsonschema:"description=The page number to return (1-based)"`
-}
+// --- API Call Implementation Functions ---
 
-// ScheduleSummary represents a simplified view of an OnCall schedule
-type ScheduleSummary struct {
-	ID       string   `json:"id" jsonschema:"description=The unique identifier of the schedule"`
-	Name     string   `json:"name" jsonschema:"description=The name of the schedule"`
-	TeamID   string   `json:"teamId" jsonschema:"description=The ID of the team this schedule belongs to"`
-	Timezone string   `json:"timezone" jsonschema:"description=The timezone for this schedule"`
-	Shifts   []string `json:"shifts" jsonschema:"description=List of shift IDs in this schedule"`
-}
-
-func listOnCallSchedules(ctx context.Context, args ListOnCallSchedulesParams) ([]*ScheduleSummary, error) {
+// fetchOnCallSchedules performs the API call to list or get OnCall schedules.
+func fetchOnCallSchedules(ctx context.Context, args ListOnCallSchedulesParams) ([]*ScheduleSummary, error) {
 	scheduleService, err := getScheduleServiceFromContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting OnCall schedule service: %w", err)
@@ -204,17 +330,8 @@ func listOnCallSchedules(ctx context.Context, args ListOnCallSchedulesParams) ([
 	return summaries, nil
 }
 
-var ListOnCallSchedules = mcpgrafana.MustTool(
-	"list_oncall_schedules",
-	"List OnCall schedules. A schedule is a calendar-based system defining when team members are on-call. Optionally provide a scheduleId to get details for a specific schedule",
-	listOnCallSchedules,
-)
-
-type GetOnCallShiftParams struct {
-	ShiftID string `json:"shiftId" jsonschema:"required,description=The ID of the shift to get details for"`
-}
-
-func getOnCallShift(ctx context.Context, args GetOnCallShiftParams) (*aapi.OnCallShift, error) {
+// fetchOnCallShift performs the API call to get details for a specific OnCall shift.
+func fetchOnCallShift(ctx context.Context, args GetOnCallShiftParams) (*aapi.OnCallShift, error) {
 	shiftService, err := getOnCallShiftServiceFromContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting OnCall shift service: %w", err)
@@ -228,24 +345,8 @@ func getOnCallShift(ctx context.Context, args GetOnCallShiftParams) (*aapi.OnCal
 	return shift, nil
 }
 
-var GetOnCallShift = mcpgrafana.MustTool(
-	"get_oncall_shift",
-	"Get details for a specific OnCall shift. A shift represents a designated time period within a rotation when a team or individual is actively on-call",
-	getOnCallShift,
-)
-
-// CurrentOnCallUsers represents the currently on-call users for a schedule
-type CurrentOnCallUsers struct {
-	ScheduleID   string       `json:"scheduleId" jsonschema:"description=The ID of the schedule"`
-	ScheduleName string       `json:"scheduleName" jsonschema:"description=The name of the schedule"`
-	Users        []*aapi.User `json:"users" jsonschema:"description=List of users currently on call"`
-}
-
-type GetCurrentOnCallUsersParams struct {
-	ScheduleID string `json:"scheduleId" jsonschema:"required,description=The ID of the schedule to get current on-call users for"`
-}
-
-func getCurrentOnCallUsers(ctx context.Context, args GetCurrentOnCallUsersParams) (*CurrentOnCallUsers, error) {
+// fetchCurrentOnCallUsers performs the API calls to get the current on-call users for a schedule.
+func fetchCurrentOnCallUsers(ctx context.Context, args GetCurrentOnCallUsersParams) (*CurrentOnCallUsers, error) {
 	scheduleService, err := getScheduleServiceFromContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting OnCall schedule service: %w", err)
@@ -288,17 +389,8 @@ func getCurrentOnCallUsers(ctx context.Context, args GetCurrentOnCallUsersParams
 	return result, nil
 }
 
-var GetCurrentOnCallUsers = mcpgrafana.MustTool(
-	"get_current_oncall_users",
-	"Get users currently on-call for a specific schedule. A schedule is a calendar-based system defining when team members are on-call. This tool will return info about all users currently on-call for the schedule, regardless of team.",
-	getCurrentOnCallUsers,
-)
-
-type ListOnCallTeamsParams struct {
-	Page int `json:"page,omitempty" jsonschema:"description=The page number to return"`
-}
-
-func listOnCallTeams(ctx context.Context, args ListOnCallTeamsParams) ([]*aapi.Team, error) {
+// fetchOnCallTeams performs the API call to list OnCall teams.
+func fetchOnCallTeams(ctx context.Context, args ListOnCallTeamsParams) ([]*aapi.Team, error) {
 	teamService, err := getTeamServiceFromContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting OnCall team service: %w", err)
@@ -317,19 +409,8 @@ func listOnCallTeams(ctx context.Context, args ListOnCallTeamsParams) ([]*aapi.T
 	return response.Teams, nil
 }
 
-var ListOnCallTeams = mcpgrafana.MustTool(
-	"list_oncall_teams",
-	"List teams from Grafana OnCall",
-	listOnCallTeams,
-)
-
-type ListOnCallUsersParams struct {
-	UserID   string `json:"userId,omitempty" jsonschema:"description=The ID of the user to get details for. If provided, returns only that user's details"`
-	Username string `json:"username,omitempty" jsonschema:"description=The username to filter users by. If provided, returns only the user matching this username"`
-	Page     int    `json:"page,omitempty" jsonschema:"description=The page number to return"`
-}
-
-func listOnCallUsers(ctx context.Context, args ListOnCallUsersParams) ([]*aapi.User, error) {
+// fetchOnCallUsers performs the API call to list or get OnCall users.
+func fetchOnCallUsers(ctx context.Context, args ListOnCallUsersParams) ([]*aapi.User, error) {
 	userService, err := getUserServiceFromContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting OnCall user service: %w", err)
@@ -360,26 +441,8 @@ func listOnCallUsers(ctx context.Context, args ListOnCallUsersParams) ([]*aapi.U
 	return response.Users, nil
 }
 
-var ListOnCallUsers = mcpgrafana.MustTool(
-	"list_oncall_users",
-	"List users from Grafana OnCall. If user ID is provided, returns details for that specific user. If username is provided, returns the user matching that username",
-	listOnCallUsers,
-)
-
-type ListOnCallAlertGroupsParams struct {
-	ID            string `json:"id,omitempty" jsonschema:"description=Exact match, alert group ID"`
-	RouteID       string `json:"route_id,omitempty" jsonschema:"description=Exact match, route ID"`
-	IntegrationID string `json:"integration_id,omitempty" jsonschema:"description=Exact match, integration ID"`
-	State         string `json:"state,omitempty" jsonschema:"description=Possible values: new, acknowledged, resolved or silenced"`
-	TeamID        string `json:"team_id,omitempty" jsonschema:"description=Exact match, team ID"`
-	StartedAt     string `json:"started_at,omitempty" jsonschema:"description=Filter alert groups by start time in ISO 8601 format with start and end timestamps separated by underscore. Example: 2024-03-20T10:00:00_2024-03-21T10:00:00"`
-	Labels        string `json:"labels,omitempty" jsonschema:"description=Filter alert groups by labels. Expected format: key1:value1,key2:value2"`
-	TeamName      string `json:"team_name,omitempty" jsonschema:"description=Team name. If provided, returns only alert groups for this team. It may not be an exact match."`
-	Name          string `json:"name,omitempty" jsonschema:"description=Filter alert groups by name"`
-	Page          int    `json:"page,omitempty" jsonschema:"description=The page number to return (1-based)"`
-}
-
-func listOnCallAlertGroups(ctx context.Context, args ListOnCallAlertGroupsParams) ([]*aapi.AlertGroup, error) {
+// fetchOnCallAlertGroups performs the API call to list OnCall alert groups.
+func fetchOnCallAlertGroups(ctx context.Context, args ListOnCallAlertGroupsParams) ([]*aapi.AlertGroup, error) {
 	alertGroupService, err := getAlertGroupServiceFromContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting OnCall alert group service: %w", err)
@@ -423,18 +486,8 @@ func listOnCallAlertGroups(ctx context.Context, args ListOnCallAlertGroupsParams
 	return response.AlertGroups, nil
 }
 
-var ListOnCallAlertGroups = mcpgrafana.MustTool(
-	"list_oncall_alert_groups",
-	"List alert groups from Grafana OnCall. Optionally filter by alert group ID, route ID, integration ID, state, or name",
-	listOnCallAlertGroups,
-)
-
-type GetOnCallAlertsParams struct {
-	AlertGroupID string `json:"alertGroupId" jsonschema:"required,description=The ID of the alert group to get alerts for"`
-	Page         int    `json:"page,omitempty" jsonschema:"description=The page number to return (1-based)"`
-}
-
-func getOnCallAlerts(ctx context.Context, args GetOnCallAlertsParams) ([]*aapi.Alert, error) {
+// fetchOnCallAlerts performs the API call to get alerts for a specific alert group.
+func fetchOnCallAlerts(ctx context.Context, args GetOnCallAlertsParams) ([]*aapi.Alert, error) {
 	alertService, err := getAlertServiceFromContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting OnCall alert service: %w", err)
@@ -453,20 +506,4 @@ func getOnCallAlerts(ctx context.Context, args GetOnCallAlertsParams) ([]*aapi.A
 	}
 
 	return response.Alerts, nil
-}
-
-var GetOnCallAlerts = mcpgrafana.MustTool(
-	"get_oncall_alerts",
-	"Get alerts for a specific alert group in Grafana OnCall",
-	getOnCallAlerts,
-)
-
-func AddOnCallTools(mcp *server.MCPServer) {
-	ListOnCallSchedules.Register(mcp)
-	GetOnCallShift.Register(mcp)
-	GetCurrentOnCallUsers.Register(mcp)
-	ListOnCallTeams.Register(mcp)
-	ListOnCallUsers.Register(mcp)
-	ListOnCallAlertGroups.Register(mcp)
-	GetOnCallAlerts.Register(mcp)
 }
