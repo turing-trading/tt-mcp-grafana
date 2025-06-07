@@ -39,9 +39,11 @@ type Tool struct {
 //
 //	mcpgrafana.MustTool(name, description, toolHandler).Register(server)
 func (t *Tool) Register(mcp *server.MCPServer, toolMode ToolMode) {
-	if t.Mode == toolMode {
-		mcp.AddTool(t.Tool, t.Handler)
+	// Don't register write tools in read mode
+	if t.Mode == ToolModeWrite && toolMode == ToolModeRead {
+		return
 	}
+	mcp.AddTool(t.Tool, t.Handler)
 }
 
 // MustTool creates a new Tool from the given name, description, and toolHandler.
@@ -56,7 +58,7 @@ func MustTool[T any, R any](
 	if err != nil {
 		panic(err)
 	}
-	return Tool{Tool: tool, Handler: handler}
+	return Tool{Tool: tool, Handler: handler, Mode: toolMode}
 }
 
 // ToolHandlerFunc is the type of a handler function for a tool.
