@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/mcp-grafana/tools"
 )
 
-func maybeAddTools(s *server.MCPServer, tf func(*server.MCPServer), enabledTools []string, disable bool, category string) {
+func maybeAddTools(s *server.MCPServer, tf func(*server.MCPServer, mcpgrafana.ToolMode), enabledTools []string, disable bool, category string, mode mcpgrafana.ToolMode) {
 	if !slices.Contains(enabledTools, category) {
 		slog.Debug("Not enabling tools", "category", category)
 		return
@@ -25,7 +25,7 @@ func maybeAddTools(s *server.MCPServer, tf func(*server.MCPServer), enabledTools
 		return
 	}
 	slog.Debug("Enabling tools", "category", category)
-	tf(s)
+	tf(s, mode)
 }
 
 // disabledTools indicates whether each category of tools should be disabled.
@@ -63,33 +63,33 @@ func (gc *grafanaConfig) addFlags() {
 	flag.BoolVar(&gc.debug, "debug", false, "Enable debug mode for the Grafana transport")
 }
 
-func (dt *disabledTools) addTools(s *server.MCPServer) {
+func (dt *disabledTools) addTools(s *server.MCPServer, mode mcpgrafana.ToolMode) {
 	enabledTools := strings.Split(dt.enabledTools, ",")
-	maybeAddTools(s, tools.AddSearchTools, enabledTools, dt.search, "search")
-	maybeAddTools(s, tools.AddDatasourceTools, enabledTools, dt.datasource, "datasource")
-	maybeAddTools(s, tools.AddIncidentTools, enabledTools, dt.incident, "incident")
-	maybeAddTools(s, tools.AddPrometheusTools, enabledTools, dt.prometheus, "prometheus")
-	maybeAddTools(s, tools.AddLokiTools, enabledTools, dt.loki, "loki")
-	maybeAddTools(s, tools.AddAlertingTools, enabledTools, dt.alerting, "alerting")
-	maybeAddTools(s, tools.AddDashboardTools, enabledTools, dt.dashboard, "dashboard")
-	maybeAddTools(s, tools.AddOnCallTools, enabledTools, dt.oncall, "oncall")
-	maybeAddTools(s, tools.AddAssertsTools, enabledTools, dt.asserts, "asserts")
-	maybeAddTools(s, tools.AddSiftTools, enabledTools, dt.sift, "sift")
-	maybeAddTools(s, tools.AddAdminTools, enabledTools, dt.admin, "admin")
+	maybeAddTools(s, tools.AddSearchTools, enabledTools, dt.search, "search", mode)
+	maybeAddTools(s, tools.AddDatasourceTools, enabledTools, dt.datasource, "datasource", mode)
+	maybeAddTools(s, tools.AddIncidentTools, enabledTools, dt.incident, "incident", mode)
+	maybeAddTools(s, tools.AddPrometheusTools, enabledTools, dt.prometheus, "prometheus", mode)
+	maybeAddTools(s, tools.AddLokiTools, enabledTools, dt.loki, "loki", mode)
+	maybeAddTools(s, tools.AddAlertingTools, enabledTools, dt.alerting, "alerting", mode)
+	maybeAddTools(s, tools.AddDashboardTools, enabledTools, dt.dashboard, "dashboard", mode)
+	maybeAddTools(s, tools.AddOnCallTools, enabledTools, dt.oncall, "oncall", mode)
+	maybeAddTools(s, tools.AddAssertsTools, enabledTools, dt.asserts, "asserts", mode)
+	maybeAddTools(s, tools.AddSiftTools, enabledTools, dt.sift, "sift", mode)
+	maybeAddTools(s, tools.AddAdminTools, enabledTools, dt.admin, "admin", mode)
 }
 
-func newServer(dt disabledTools) *server.MCPServer {
+func newServer(dt disabledTools, mode mcpgrafana.ToolMode) *server.MCPServer {
 	s := server.NewMCPServer(
 		"mcp-grafana",
 		"0.1.0",
 	)
-	dt.addTools(s)
+	dt.addTools(s, mode)
 	return s
 }
 
-func run(transport, addr, basePath string, logLevel slog.Level, dt disabledTools, gc grafanaConfig) error {
+func run(transport, addr, basePath string, logLevel slog.Level, dt disabledTools, gc grafanaConfig, mode mcpgrafana.ToolMode) error {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
-	s := newServer(dt)
+	s := newServer(dt, mode)
 
 	switch transport {
 	case "stdio":
@@ -127,13 +127,17 @@ func main() {
 	addr := flag.String("sse-address", "localhost:8000", "The host and port to start the sse server on")
 	basePath := flag.String("base-path", "", "Base path for the sse server")
 	logLevel := flag.String("log-level", "info", "Log level (debug, info, warn, error)")
+	var modeStr string
+	flag.StringVar(&modeStr, "mode", "write", "Tool mode (read or write)")
 	var dt disabledTools
 	dt.addFlags()
 	var gc grafanaConfig
 	gc.addFlags()
 	flag.Parse()
 
-	if err := run(transport, *addr, *basePath, parseLevel(*logLevel), dt, gc); err != nil {
+	mode := mcpgrafana.ToolMode(modeStr)
+
+	if err := run(transport, *addr, *basePath, parseLevel(*logLevel), dt, gc, mode); err != nil {
 		panic(err)
 	}
 }

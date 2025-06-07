@@ -49,6 +49,7 @@ func listIncidents(ctx context.Context, args ListIncidentsParams) (*incident.Que
 var ListIncidents = mcpgrafana.MustTool(
 	"list_incidents",
 	"List Grafana incidents. Allows filtering by status ('active', 'resolved') and optionally including drill incidents. Returns a preview list with basic details.",
+	mcpgrafana.ToolModeRead,
 	listIncidents,
 	mcp.WithTitleAnnotation("List incidents"),
 	mcp.WithIdempotentHintAnnotation(true),
@@ -88,6 +89,7 @@ func createIncident(ctx context.Context, args CreateIncidentParams) (*incident.I
 var CreateIncident = mcpgrafana.MustTool(
 	"create_incident",
 	"Create a new Grafana incident. Requires title, severity, and room prefix. Allows setting status and labels. This tool should be used judiciously and sparingly, and only after confirmation from the user, as it may notify or alarm lots of people.",
+	mcpgrafana.ToolModeWrite,
 	createIncident,
 	mcp.WithTitleAnnotation("Create incident"),
 )
@@ -116,15 +118,16 @@ func addActivityToIncident(ctx context.Context, args AddActivityToIncidentParams
 var AddActivityToIncident = mcpgrafana.MustTool(
 	"add_activity_to_incident",
 	"Add a note (userNote activity) to an existing incident's timeline using its ID. The note body can include URLs which will be attached as context. Use this to add context to an incident.",
+	mcpgrafana.ToolModeWrite,
 	addActivityToIncident,
 	mcp.WithTitleAnnotation("Add activity to incident"),
 )
 
-func AddIncidentTools(mcp *server.MCPServer) {
-	ListIncidents.Register(mcp)
-	CreateIncident.Register(mcp)
-	AddActivityToIncident.Register(mcp)
-	GetIncident.Register(mcp)
+func AddIncidentTools(mcp *server.MCPServer, toolMode mcpgrafana.ToolMode) {
+	ListIncidents.Register(mcp, toolMode)
+	CreateIncident.Register(mcp, toolMode)
+	AddActivityToIncident.Register(mcp, toolMode)
+	GetIncident.Register(mcp, toolMode)
 }
 
 type GetIncidentParams struct {
@@ -148,6 +151,7 @@ func getIncident(ctx context.Context, args GetIncidentParams) (*incident.Inciden
 var GetIncident = mcpgrafana.MustTool(
 	"get_incident",
 	"Get a single incident by ID. Returns the full incident details including title, status, severity, labels, timestamps, and other metadata.",
+	mcpgrafana.ToolModeRead,
 	getIncident,
 	mcp.WithTitleAnnotation("Get incident details"),
 	mcp.WithIdempotentHintAnnotation(true),

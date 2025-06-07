@@ -35,12 +35,13 @@ func searchDashboards(ctx context.Context, args SearchDashboardsParams) (models.
 var SearchDashboards = mcpgrafana.MustTool(
 	"search_dashboards",
 	"Search for Grafana dashboards by a query string. Returns a list of matching dashboards with details like title, UID, folder, tags, and URL.",
+	mcpgrafana.ToolModeRead,
 	searchDashboards,
 	mcp.WithTitleAnnotation("Search dashboards"),
 	mcp.WithIdempotentHintAnnotation(true),
 	mcp.WithReadOnlyHintAnnotation(true),
 )
 
-func AddSearchTools(mcp *server.MCPServer) {
-	SearchDashboards.Register(mcp)
+func AddSearchTools(mcp *server.MCPServer, toolMode mcpgrafana.ToolMode) {
+	SearchDashboards.Register(mcp, toolMode)
 }

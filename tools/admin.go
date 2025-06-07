@@ -31,9 +31,10 @@ func listTeams(ctx context.Context, args ListTeamsParams) (*models.SearchTeamQue
 var ListTeams = mcpgrafana.MustTool(
 	"list_teams",
 	"Search for Grafana teams by a query string. Returns a list of matching teams with details like name, ID, and URL.",
+	mcpgrafana.ToolModeRead,
 	listTeams,
 )
 
-func AddAdminTools(mcp *server.MCPServer) {
-	ListTeams.Register(mcp)
+func AddAdminTools(mcp *server.MCPServer, toolMode mcpgrafana.ToolMode) {
+	ListTeams.Register(mcp, toolMode)
 }

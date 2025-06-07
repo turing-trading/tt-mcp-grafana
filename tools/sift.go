@@ -176,6 +176,7 @@ func getSiftInvestigation(ctx context.Context, args GetSiftInvestigationParams) 
 var GetSiftInvestigation = mcpgrafana.MustTool(
 	"get_sift_investigation",
 	"Retrieves an existing Sift investigation by its UUID. The ID should be provided as a string in UUID format (e.g. '02adab7c-bf5b-45f2-9459-d71a2c29e11b').",
+	mcpgrafana.ToolModeRead,
 	getSiftInvestigation,
 	mcp.WithTitleAnnotation("Get Sift investigation"),
 	mcp.WithIdempotentHintAnnotation(true),
@@ -218,6 +219,7 @@ func getSiftAnalysis(ctx context.Context, args GetSiftAnalysisParams) (*analysis
 var GetSiftAnalysis = mcpgrafana.MustTool(
 	"get_sift_analysis",
 	"Retrieves a specific analysis from an investigation by its UUID. The investigation ID and analysis ID should be provided as strings in UUID format.",
+	mcpgrafana.ToolModeRead,
 	getSiftAnalysis,
 	mcp.WithTitleAnnotation("Get Sift analysis"),
 	mcp.WithIdempotentHintAnnotation(true),
@@ -253,6 +255,7 @@ func listSiftInvestigations(ctx context.Context, args ListSiftInvestigationsPara
 var ListSiftInvestigations = mcpgrafana.MustTool(
 	"list_sift_investigations",
 	"Retrieves a list of Sift investigations with an optional limit. If no limit is specified, defaults to 10 investigations.",
+	mcpgrafana.ToolModeRead,
 	listSiftInvestigations,
 	mcp.WithTitleAnnotation("List Sift investigations"),
 	mcp.WithIdempotentHintAnnotation(true),
@@ -340,6 +343,7 @@ func findErrorPatternLogs(ctx context.Context, args FindErrorPatternLogsParams) 
 var FindErrorPatternLogs = mcpgrafana.MustTool(
 	"find_error_pattern_logs",
 	"Searches Loki logs for elevated error patterns compared to the last day's average, waits for the analysis to complete, and returns the results including any patterns found.",
+	mcpgrafana.ToolModeRead,
 	findErrorPatternLogs,
 	mcp.WithTitleAnnotation("Find error patterns in logs"),
 	mcp.WithReadOnlyHintAnnotation(true),
@@ -406,18 +410,19 @@ func findSlowRequests(ctx context.Context, args FindSlowRequestsParams) (*analys
 var FindSlowRequests = mcpgrafana.MustTool(
 	"find_slow_requests",
 	"Searches relevant Tempo datasources for slow requests, waits for the analysis to complete, and returns the results.",
+	mcpgrafana.ToolModeRead,
 	findSlowRequests,
 	mcp.WithTitleAnnotation("Find slow requests"),
 	mcp.WithReadOnlyHintAnnotation(true),
 )
 
 // AddSiftTools registers all Sift tools with the MCP server
-func AddSiftTools(mcp *server.MCPServer) {
-	GetSiftInvestigation.Register(mcp)
-	GetSiftAnalysis.Register(mcp)
-	ListSiftInvestigations.Register(mcp)
-	FindErrorPatternLogs.Register(mcp)
-	FindSlowRequests.Register(mcp)
+func AddSiftTools(mcp *server.MCPServer, toolMode mcpgrafana.ToolMode) {
+	GetSiftInvestigation.Register(mcp, toolMode)
+	GetSiftAnalysis.Register(mcp, toolMode)
+	ListSiftInvestigations.Register(mcp, toolMode)
+	FindErrorPatternLogs.Register(mcp, toolMode)
+	FindSlowRequests.Register(mcp, toolMode)
 }
 
 // makeRequest is a helper method to make HTTP requests and handle common response patterns

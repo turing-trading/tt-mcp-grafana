@@ -67,6 +67,7 @@ func summarizeDatasources(dataSources models.DataSourceList) []dataSourceSummary
 var ListDatasources = mcpgrafana.MustTool(
 	"list_datasources",
 	"List available Grafana datasources. Optionally filter by datasource type (e.g., 'prometheus', 'loki'). Returns a summary list including ID, UID, name, type, and default status.",
+	mcpgrafana.ToolModeRead,
 	listDatasources,
 	mcp.WithTitleAnnotation("List datasources"),
 	mcp.WithIdempotentHintAnnotation(true),
@@ -93,6 +94,7 @@ func getDatasourceByUID(ctx context.Context, args GetDatasourceByUIDParams) (*mo
 var GetDatasourceByUID = mcpgrafana.MustTool(
 	"get_datasource_by_uid",
 	"Retrieves detailed information about a specific datasource using its UID. Returns the full datasource model, including name, type, URL, access settings, JSON data, and secure JSON field status.",
+	mcpgrafana.ToolModeRead,
 	getDatasourceByUID,
 	mcp.WithTitleAnnotation("Get datasource by UID"),
 	mcp.WithIdempotentHintAnnotation(true),
@@ -115,14 +117,15 @@ func getDatasourceByName(ctx context.Context, args GetDatasourceByNameParams) (*
 var GetDatasourceByName = mcpgrafana.MustTool(
 	"get_datasource_by_name",
 	"Retrieves detailed information about a specific datasource using its name. Returns the full datasource model, including UID, type, URL, access settings, JSON data, and secure JSON field status.",
+	mcpgrafana.ToolModeRead,
 	getDatasourceByName,
 	mcp.WithTitleAnnotation("Get datasource by name"),
 	mcp.WithIdempotentHintAnnotation(true),
 	mcp.WithReadOnlyHintAnnotation(true),
 )
 
-func AddDatasourceTools(mcp *server.MCPServer) {
-	ListDatasources.Register(mcp)
-	GetDatasourceByUID.Register(mcp)
-	GetDatasourceByName.Register(mcp)
+func AddDatasourceTools(mcp *server.MCPServer, toolMode mcpgrafana.ToolMode) {
+	ListDatasources.Register(mcp, toolMode)
+	GetDatasourceByUID.Register(mcp, toolMode)
+	GetDatasourceByName.Register(mcp, toolMode)
 }

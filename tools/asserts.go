@@ -137,12 +137,13 @@ func getAssertions(ctx context.Context, args GetAssertionsParams) (string, error
 var GetAssertions = mcpgrafana.MustTool(
 	"get_assertions",
 	"Get assertion summary for a given entity with its type, name, env, site, namespace, and a time range",
+	mcpgrafana.ToolModeRead,
 	getAssertions,
 	mcp.WithTitleAnnotation("Get assertions summary"),
 	mcp.WithIdempotentHintAnnotation(true),
 	mcp.WithReadOnlyHintAnnotation(true),
 )
 
-func AddAssertsTools(mcp *server.MCPServer) {
-	GetAssertions.Register(mcp)
+func AddAssertsTools(mcp *server.MCPServer, toolMode mcpgrafana.ToolMode) {
+	GetAssertions.Register(mcp, toolMode)
 }

@@ -12,6 +12,13 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+type ToolMode string
+
+const (
+	ToolModeRead  ToolMode = "read"
+	ToolModeWrite ToolMode = "write"
+)
+
 // Tool is a struct that represents a tool definition and the function used
 // to handle tool calls.
 //
@@ -21,6 +28,7 @@ import (
 type Tool struct {
 	Tool    mcp.Tool
 	Handler server.ToolHandlerFunc
+	Mode    ToolMode
 }
 
 // Register adds the Tool to the given MCPServer.
@@ -30,14 +38,17 @@ type Tool struct {
 // statement:
 //
 //	mcpgrafana.MustTool(name, description, toolHandler).Register(server)
-func (t *Tool) Register(mcp *server.MCPServer) {
-	mcp.AddTool(t.Tool, t.Handler)
+func (t *Tool) Register(mcp *server.MCPServer, toolMode ToolMode) {
+	if t.Mode == toolMode {
+		mcp.AddTool(t.Tool, t.Handler)
+	}
 }
 
 // MustTool creates a new Tool from the given name, description, and toolHandler.
 // It panics if the tool cannot be created.
 func MustTool[T any, R any](
 	name, description string,
+	toolMode ToolMode,
 	toolHandler ToolHandlerFunc[T, R],
 	options ...mcp.ToolOption,
 ) Tool {
