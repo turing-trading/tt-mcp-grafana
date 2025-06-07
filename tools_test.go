@@ -7,8 +7,11 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -523,4 +526,94 @@ func TestCreateJSONSchemaFromHandler(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "boolean", optionalProperty.Type)
 	assert.Equal(t, "An optional parameter", optionalProperty.Description)
+}
+
+func TestToolModeLogic(t *testing.T) {
+	// Test handler function
+	handler := func(ctx context.Context, params testToolParams) (string, error) {
+		return "test", nil
+	}
+
+	tests := []struct {
+		name           string
+		toolMode       ToolMode
+		registerMode   ToolMode
+		shouldRegister bool
+	}{
+		{
+			name:           "matching read modes",
+			toolMode:       ToolModeRead,
+			registerMode:   ToolModeRead,
+			shouldRegister: true,
+		},
+		{
+			name:           "matching write modes",
+			toolMode:       ToolModeWrite,
+			registerMode:   ToolModeWrite,
+			shouldRegister: true,
+		},
+		{
+			name:           "mismatched modes - read tool, write register",
+			toolMode:       ToolModeRead,
+			registerMode:   ToolModeWrite,
+			shouldRegister: true,
+		},
+		{
+			name:           "mismatched modes - write tool, read register",
+			toolMode:       ToolModeWrite,
+			registerMode:   ToolModeRead,
+			shouldRegister: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			// Create tool with mode
+			tool := MustTool("test", "test description", tt.toolMode, handler)
+
+			// Verify the mode was set correctly
+			assert.Equal(t, tt.toolMode, tool.Mode, "Tool mode should be set correctly")
+
+			// Create a test MCP server and register the tool
+			s := server.NewMCPServer("test", "test description")
+			tool.Register(s, tt.registerMode)
+
+			c, err := client.NewInProcessClient(s)
+			if err != nil {
+				t.Fatalf("failed to create in memory client: %v", err)
+			}
+
+			// Start the client with timeout context
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+
+			if err := c.Start(ctxWithTimeout); err != nil {
+				t.Fatalf("failed to start client: %v", err)
+			}
+
+			// Initialize the client
+			initRequest := mcp.InitializeRequest{}
+			initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+			initRequest.Params.ClientInfo = mcp.Implementation{
+				Name:    "Example MCP Client",
+				Version: "1.0.0",
+			}
+			initRequest.Params.Capabilities = mcp.ClientCapabilities{}
+
+			_, err = c.Initialize(ctx, initRequest)
+			if err != nil {
+				t.Fatalf("failed to initialize MCP client: %v", err)
+			}
+
+			request := mcp.CallToolRequest{}
+			request.Params.Name = "test"
+			_, err = c.CallTool(ctx, request)
+			if tt.shouldRegister {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+			}
+		})
+	}
 }
