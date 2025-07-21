@@ -6,14 +6,18 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/mark3labs/mcp-go/server"
 
 	mcpgrafana "github.com/grafana/mcp-grafana"
+	"github.com/grafana/mcp-grafana/internal/health"
 	"github.com/grafana/mcp-grafana/tools"
 )
 
@@ -65,6 +69,13 @@ type grafanaConfig struct {
 	tlsSkipVerify bool
 }
 
+// Configuration for health checks.
+type healthConfig struct {
+	enabled      bool
+	port         string
+	separatePort bool
+}
+
 func (dt *disabledTools) addFlags() {
 	flag.StringVar(&dt.enabledTools, "enabled-tools", "search,datasource,incident,prometheus,loki,alerting,dashboard,oncall,asserts,sift,admin,pyroscope", "A comma separated list of tools enabled for this server. Can be overwritten entirely or by disabling specific components, e.g. --disable-search.")
 
@@ -90,6 +101,12 @@ func (gc *grafanaConfig) addFlags() {
 	flag.StringVar(&gc.tlsKeyFile, "tls-key-file", "", "Path to TLS private key file for client authentication")
 	flag.StringVar(&gc.tlsCAFile, "tls-ca-file", "", "Path to TLS CA certificate file for server verification")
 	flag.BoolVar(&gc.tlsSkipVerify, "tls-skip-verify", false, "Skip TLS certificate verification (insecure)")
+}
+
+func (hc *healthConfig) addFlags() {
+	flag.BoolVar(&hc.enabled, "health-enabled", true, "Enable health check endpoints for server transports")
+	flag.StringVar(&hc.port, "health-port", "", "Port for health check endpoints (defaults to main port + 1000)")
+	flag.BoolVar(&hc.separatePort, "health-separate-port", true, "Run health checks on a separate port")
 }
 
 func (dt *disabledTools) addTools(s *server.MCPServer) {
@@ -127,9 +144,18 @@ func newServer(dt disabledTools) *server.MCPServer {
 	return s
 }
 
-func run(transport, addr, basePath, endpointPath string, logLevel slog.Level, dt disabledTools, gc mcpgrafana.GrafanaConfig) error {
+func run(transport, addr, basePath, endpointPath string, logLevel slog.Level, dt disabledTools, gc mcpgrafana.GrafanaConfig, hc healthConfig) error {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
 	s := newServer(dt)
+
+	// Set up signal handling for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	var healthServer *health.Server
 
 	switch transport {
 	case "stdio":
@@ -142,25 +168,102 @@ func run(transport, addr, basePath, endpointPath string, logLevel slog.Level, dt
 			server.WithSSEContextFunc(mcpgrafana.ComposedSSEContextFunc(gc)),
 			server.WithStaticBasePath(basePath),
 		)
-		slog.Info("Starting Grafana MCP server using SSE transport", "version", version(), "address", addr, "basePath", basePath)
-		if err := srv.Start(addr); err != nil {
-			return fmt.Errorf("Server error: %v", err)
+
+		// Start health check server if enabled
+		if hc.enabled {
+			healthConfig := health.Config{
+				ServiceName: "mcp-grafana",
+				Version:     version(),
+			}
+			healthServer = health.NewServer(healthConfig)
+
+			healthAddr := addr
+			if hc.separatePort {
+				if hc.port != "" {
+					healthAddr = hc.port
+				} else {
+					healthAddr = health.GenerateHealthAddr(addr)
+				}
+			}
+
+			if err := healthServer.StartAsync(healthAddr); err != nil {
+				slog.Error("Failed to start health server", "error", err)
+			} else {
+				slog.Info("Health check endpoints available", "address", healthAddr, "endpoints", "/healthz, /health, /health/readiness, /health/liveness")
+			}
 		}
+
+		slog.Info("Starting Grafana MCP server using SSE transport", "version", version(), "address", addr, "basePath", basePath)
+		go func() {
+			if err := srv.Start(addr); err != nil {
+				slog.Error("SSE server error", "error", err)
+				cancel()
+			}
+		}()
 	case "streamable-http":
 		srv := server.NewStreamableHTTPServer(s, server.WithHTTPContextFunc(mcpgrafana.ComposedHTTPContextFunc(gc)),
 			server.WithStateLess(true),
 			server.WithEndpointPath(endpointPath),
 		)
-		slog.Info("Starting Grafana MCP server using StreamableHTTP transport", "version", version(), "address", addr, "endpointPath", endpointPath)
-		if err := srv.Start(addr); err != nil {
-			return fmt.Errorf("Server error: %v", err)
+
+		// Start health check server if enabled
+		if hc.enabled {
+			healthConfig := health.Config{
+				ServiceName: "mcp-grafana",
+				Version:     version(),
+			}
+			healthServer = health.NewServer(healthConfig)
+
+			healthAddr := addr
+			if hc.separatePort {
+				if hc.port != "" {
+					healthAddr = hc.port
+				} else {
+					healthAddr = health.GenerateHealthAddr(addr)
+				}
+			}
+
+			if err := healthServer.StartAsync(healthAddr); err != nil {
+				slog.Error("Failed to start health server", "error", err)
+			} else {
+				slog.Info("Health check endpoints available", "address", healthAddr, "endpoints", "/healthz, /health, /health/readiness, /health/liveness")
+			}
 		}
+
+		slog.Info("Starting Grafana MCP server using StreamableHTTP transport", "version", version(), "address", addr, "endpointPath", endpointPath)
+		go func() {
+			if err := srv.Start(addr); err != nil {
+				slog.Error("StreamableHTTP server error", "error", err)
+				cancel()
+			}
+		}()
 	default:
 		return fmt.Errorf(
 			"Invalid transport type: %s. Must be 'stdio', 'sse' or 'streamable-http'",
 			transport,
 		)
 	}
+
+	// Wait for shutdown signal for non-stdio transports
+	if transport != "stdio" {
+		select {
+		case <-sigChan:
+			slog.Info("Received shutdown signal")
+		case <-ctx.Done():
+			slog.Info("Context cancelled")
+		}
+
+		// Graceful shutdown
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
+
+		if healthServer != nil {
+			if err := healthServer.Stop(shutdownCtx); err != nil {
+				slog.Error("Error stopping health server", "error", err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -182,6 +285,8 @@ func main() {
 	dt.addFlags()
 	var gc grafanaConfig
 	gc.addFlags()
+	var hc healthConfig
+	hc.addFlags()
 	flag.Parse()
 
 	if *showVersion {
@@ -200,7 +305,7 @@ func main() {
 		}
 	}
 
-	if err := run(transport, *addr, *basePath, *endpointPath, parseLevel(*logLevel), dt, grafanaConfig); err != nil {
+	if err := run(transport, *addr, *basePath, *endpointPath, parseLevel(*logLevel), dt, grafanaConfig, hc); err != nil {
 		panic(err)
 	}
 }
