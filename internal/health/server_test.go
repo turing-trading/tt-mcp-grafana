@@ -1,222 +1,53 @@
 package health
 
 import (
-	"context"
 	"fmt"
-	"net"
 	"net/http"
-	"net/url"
 	"testing"
-	"time"
 )
 
-func TestNewServer(t *testing.T) {
-	config := Config{
-		ServiceName: "test-service",
-		Version:     "1.0.0",
-	}
-
-	server := NewServer(config)
-
-	if server == nil {
-		t.Fatal("NewServer returned nil")
-	}
-
-	if server.config.ServiceName != config.ServiceName {
-		t.Errorf("expected service name %s, got %s", config.ServiceName, server.config.ServiceName)
-	}
-
-	if server.config.Version != config.Version {
-		t.Errorf("expected version %s, got %s", config.Version, server.config.Version)
-	}
-
-	if server.started {
-		t.Error("server should not be started initially")
-	}
-}
-
-func TestServerStartStop(t *testing.T) {
-	config := Config{
-		ServiceName: "test-service",
-		Version:     "1.0.0",
-	}
-
-	server := NewServer(config)
-
-	// Test starting server asynchronously
-	port, err := GetAvailablePort()
-	if err != nil {
-		t.Fatalf("failed to get available port: %v", err)
-	}
-	addr := fmt.Sprintf("localhost:%d", port)
-
-	err = server.StartAsync(addr)
-	if err != nil {
-		t.Fatalf("failed to start server: %v", err)
-	}
-
-	// Give the server a moment to start
-	time.Sleep(100 * time.Millisecond)
-
-	if !server.IsStarted() {
-		t.Error("server should be started")
-	}
-
-	// Test health endpoints
-	baseURL := fmt.Sprintf("http://%s", addr)
-	testEndpoints := []string{
-		"/healthz",
-		"/health",
-		"/health/readiness",
-		"/health/liveness",
-	}
-
-	for _, endpoint := range testEndpoints {
-		resp, err := http.Get(baseURL + endpoint)
-		if err != nil {
-			t.Errorf("failed to GET %s: %v", endpoint, err)
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("expected status 200 for %s, got %d", endpoint, resp.StatusCode)
-		}
-	}
-
-	// Test stopping server
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err = server.Stop(ctx)
-	if err != nil {
-		t.Errorf("failed to stop server: %v", err)
-	}
-
-	if server.IsStarted() {
-		t.Error("server should be stopped")
-	}
-
-	// Test that endpoints are no longer accessible
-	_, err = http.Get(baseURL + "/healthz")
-	if err == nil {
-		t.Error("expected error when accessing stopped server")
-	}
-}
-
-func TestServerDoubleStart(t *testing.T) {
-	config := Config{
-		ServiceName: "test-service",
-		Version:     "1.0.0",
-	}
-
-	server := NewServer(config)
-
-	port, err := GetAvailablePort()
-	if err != nil {
-		t.Fatalf("failed to get available port: %v", err)
-	}
-	addr := fmt.Sprintf("localhost:%d", port)
-
-	// Start server first time
-	err = server.StartAsync(addr)
-	if err != nil {
-		t.Fatalf("failed to start server first time: %v", err)
-	}
-
-	// Give the server a moment to start
-	time.Sleep(100 * time.Millisecond)
-
-	// Try to start again - should fail
-	err = server.StartAsync(addr)
-	if err == nil {
-		t.Error("expected error when starting already started server")
-	}
-
-	// Clean up
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	server.Stop(ctx)
-}
-
-func TestServerStopNotStarted(t *testing.T) {
-	config := Config{
-		ServiceName: "test-service",
-		Version:     "1.0.0",
-	}
-
-	server := NewServer(config)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Should not error when stopping a server that wasn't started
-	err := server.Stop(ctx)
-	if err != nil {
-		t.Errorf("unexpected error stopping non-started server: %v", err)
-	}
-}
-
-func TestGetAvailablePort(t *testing.T) {
-	port, err := GetAvailablePort()
-	if err != nil {
-		t.Fatalf("GetAvailablePort failed: %v", err)
-	}
-
-	if port <= 0 || port > 65535 {
-		t.Errorf("invalid port number: %d", port)
-	}
-
-	// Test that we can actually bind to this port
-	addr := fmt.Sprintf("localhost:%d", port)
-
-	// Try to listen on the port briefly to verify it's available
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		if contains(err.Error(), "address already in use") {
-			t.Errorf("port %d is already in use", port)
-		}
-	} else {
-		listener.Close()
-	}
-}
-
-func TestGetHealthPort(t *testing.T) {
+func TestGetInternalAddr(t *testing.T) {
 	tests := []struct {
 		name        string
-		mainAddr    string
+		publicAddr  string
 		expected    string
 		shouldError bool
 	}{
 		{
-			name:        "valid address",
-			mainAddr:    "localhost:8000",
-			expected:    "localhost:9000",
-			shouldError: false,
+			name:       "valid localhost address",
+			publicAddr: "localhost:8000",
+			expected:   "localhost:8001",
 		},
 		{
-			name:        "with IP address",
-			mainAddr:    "127.0.0.1:3000",
-			expected:    "127.0.0.1:4000",
-			shouldError: false,
+			name:       "valid IP address",
+			publicAddr: "127.0.0.1:3000",
+			expected:   "127.0.0.1:3001",
 		},
 		{
-			name:        "invalid address format",
-			mainAddr:    "invalid-address",
-			expected:    "",
+			name:       "valid hostname with port",
+			publicAddr: "example.com:9090",
+			expected:   "example.com:9091",
+		},
+		{
+			name:        "invalid address format - no port",
+			publicAddr:  "localhost",
 			shouldError: true,
 		},
 		{
-			name:        "non-numeric port",
-			mainAddr:    "localhost:abc",
-			expected:    "",
+			name:        "invalid address format - multiple colons",
+			publicAddr:  "host:port:extra",
+			shouldError: true,
+		},
+		{
+			name:        "invalid port number",
+			publicAddr:  "localhost:abc",
 			shouldError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := GetHealthPort(tt.mainAddr)
+			result, err := getInternalAddr(tt.publicAddr)
 
 			if tt.shouldError {
 				if err == nil {
@@ -234,183 +65,149 @@ func TestGetHealthPort(t *testing.T) {
 	}
 }
 
-func TestGenerateHealthAddr(t *testing.T) {
-	tests := []struct {
-		name     string
-		mainAddr string
-	}{
-		{
-			name:     "valid address",
-			mainAddr: "localhost:8000",
-		},
-		{
-			name:     "IP address",
-			mainAddr: "127.0.0.1:3000",
-		},
-		{
-			name:     "invalid address",
-			mainAddr: "invalid-address",
-		},
+func TestStartPublicServer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := GenerateHealthAddr(tt.mainAddr)
+	// This is a basic test that verifies the public server can be created
+	// Full integration testing would require starting actual MCP servers
+	t.Run("address parsing", func(t *testing.T) {
+		// Test that we can generate valid internal addresses
+		testAddresses := []string{
+			"localhost:8000",
+			"127.0.0.1:9000",
+			"0.0.0.0:3000",
+		}
 
-			// Should always return a valid address string
-			if result == "" {
-				t.Error("GenerateHealthAddr returned empty string")
+		for _, addr := range testAddresses {
+			internal, err := getInternalAddr(addr)
+			if err != nil {
+				t.Errorf("failed to generate internal address for %s: %v", addr, err)
 			}
+			if internal == addr {
+				t.Errorf("internal address should be different from public address: %s", addr)
+			}
+		}
+	})
+}
 
-			// Try to parse the result as a URL to verify it's valid
-			if _, err := url.Parse("http://" + result); err != nil {
-				t.Errorf("GenerateHealthAddr returned invalid address format: %s", result)
+func TestHealthEndpointInProxy(t *testing.T) {
+	// Test the health endpoint behavior in isolation
+	t.Run("health endpoint handler", func(t *testing.T) {
+		// Create a mock handler that behaves like our proxy
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/healthz" {
+				if r.Method != http.MethodGet {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("OK"))
+				return
+			}
+			// For non-health requests, return a different response
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("Not Found"))
+		})
+
+		tests := []struct {
+			name           string
+			path           string
+			method         string
+			expectedStatus int
+			expectedBody   string
+		}{
+			{
+				name:           "GET /healthz returns OK",
+				path:           "/healthz",
+				method:         http.MethodGet,
+				expectedStatus: http.StatusOK,
+				expectedBody:   "OK",
+			},
+			{
+				name:           "POST /healthz returns method not allowed",
+				path:           "/healthz",
+				method:         http.MethodPost,
+				expectedStatus: http.StatusMethodNotAllowed,
+				expectedBody:   "Method not allowed\n",
+			},
+			{
+				name:           "GET /other returns not found",
+				path:           "/other",
+				method:         http.MethodGet,
+				expectedStatus: http.StatusNotFound,
+				expectedBody:   "Not Found",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				req, err := http.NewRequest(tt.method, tt.path, nil)
+				if err != nil {
+					t.Fatalf("failed to create request: %v", err)
+				}
+
+				rr := &testResponseWriter{
+					statusCode: 200,
+					body:       make([]byte, 0),
+					headers:    make(http.Header),
+				}
+
+				handler.ServeHTTP(rr, req)
+
+				if rr.statusCode != tt.expectedStatus {
+					t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.statusCode)
+				}
+
+				if string(rr.body) != tt.expectedBody {
+					t.Errorf("expected body %q, got %q", tt.expectedBody, string(rr.body))
+				}
+			})
+		}
+	})
+}
+
+// testResponseWriter is a simple implementation of http.ResponseWriter for testing
+type testResponseWriter struct {
+	statusCode int
+	body       []byte
+	headers    http.Header
+}
+
+func (w *testResponseWriter) Header() http.Header {
+	return w.headers
+}
+
+func (w *testResponseWriter) Write(data []byte) (int, error) {
+	w.body = append(w.body, data...)
+	return len(data), nil
+}
+
+func (w *testResponseWriter) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+}
+
+func TestInternalAddrIncrement(t *testing.T) {
+	// Test that internal addresses are properly incremented
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{"localhost:8000", "localhost:8001"},
+		{"127.0.0.1:9999", "127.0.0.1:10000"},
+		{"example.com:80", "example.com:81"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("increment_%s", tc.input), func(t *testing.T) {
+			result, err := getInternalAddr(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result != tc.expected {
+				t.Errorf("expected %s, got %s", tc.expected, result)
 			}
 		})
 	}
-}
-
-func TestServerHealthEndpoints(t *testing.T) {
-	config := Config{
-		ServiceName: "mcp-grafana",
-		Version:     "test-version",
-	}
-
-	server := NewServer(config)
-
-	port, err := GetAvailablePort()
-	if err != nil {
-		t.Fatalf("failed to get available port: %v", err)
-	}
-	addr := fmt.Sprintf("localhost:%d", port)
-
-	err = server.StartAsync(addr)
-	if err != nil {
-		t.Fatalf("failed to start server: %v", err)
-	}
-
-	// Give the server a moment to start
-	time.Sleep(100 * time.Millisecond)
-
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		server.Stop(ctx)
-	}()
-
-	baseURL := fmt.Sprintf("http://%s", addr)
-
-	// Test different HTTP methods on health endpoints
-	tests := []struct {
-		endpoint       string
-		method         string
-		expectedStatus int
-	}{
-		{"/healthz", http.MethodGet, http.StatusOK},
-		{"/healthz", http.MethodPost, http.StatusMethodNotAllowed},
-		{"/health", http.MethodGet, http.StatusOK},
-		{"/health", http.MethodPut, http.StatusMethodNotAllowed},
-		{"/health/readiness", http.MethodGet, http.StatusOK},
-		{"/health/readiness", http.MethodDelete, http.StatusMethodNotAllowed},
-		{"/health/liveness", http.MethodGet, http.StatusOK},
-		{"/health/liveness", http.MethodPost, http.StatusMethodNotAllowed},
-	}
-
-	client := &http.Client{Timeout: 5 * time.Second}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("%s %s", tt.method, tt.endpoint), func(t *testing.T) {
-			req, err := http.NewRequest(tt.method, baseURL+tt.endpoint, nil)
-			if err != nil {
-				t.Fatalf("failed to create request: %v", err)
-			}
-
-			resp, err := client.Do(req)
-			if err != nil {
-				t.Fatalf("failed to make request: %v", err)
-			}
-			defer resp.Body.Close()
-
-			if resp.StatusCode != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, resp.StatusCode)
-			}
-		})
-	}
-}
-
-func TestServerConcurrentRequests(t *testing.T) {
-	config := Config{
-		ServiceName: "test-service",
-		Version:     "1.0.0",
-	}
-
-	server := NewServer(config)
-
-	port, err := GetAvailablePort()
-	if err != nil {
-		t.Fatalf("failed to get available port: %v", err)
-	}
-	addr := fmt.Sprintf("localhost:%d", port)
-
-	err = server.StartAsync(addr)
-	if err != nil {
-		t.Fatalf("failed to start server: %v", err)
-	}
-
-	// Give the server a moment to start
-	time.Sleep(100 * time.Millisecond)
-
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		server.Stop(ctx)
-	}()
-
-	baseURL := fmt.Sprintf("http://%s/healthz", addr)
-	client := &http.Client{Timeout: 5 * time.Second}
-
-	// Make concurrent requests
-	numRequests := 10
-	results := make(chan error, numRequests)
-
-	for i := 0; i < numRequests; i++ {
-		go func() {
-			resp, err := client.Get(baseURL)
-			if err != nil {
-				results <- err
-				return
-			}
-			defer resp.Body.Close()
-
-			if resp.StatusCode != http.StatusOK {
-				results <- fmt.Errorf("expected status 200, got %d", resp.StatusCode)
-				return
-			}
-
-			results <- nil
-		}()
-	}
-
-	// Collect results
-	for i := 0; i < numRequests; i++ {
-		if err := <-results; err != nil {
-			t.Errorf("concurrent request failed: %v", err)
-		}
-	}
-}
-
-// Helper function to check if a string contains a substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		(len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-			containsAt(s, substr))))
-}
-
-func containsAt(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

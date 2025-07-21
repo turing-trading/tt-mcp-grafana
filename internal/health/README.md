@@ -1,76 +1,56 @@
 # Health Check Feature
 
-This package provides health check functionality for the mcp-grafana server, enabling automated monitoring and healing of the service.
+This package provides a simple health check endpoint for the mcp-grafana server, enabling automated monitoring and healing of the service.
 
 ## Overview
 
-The health check feature adds HTTP endpoints that can be used by load balancers, orchestrators (like Kubernetes), and monitoring systems to determine if the mcp-grafana server is running and healthy.
+The health check feature adds a `/healthz` HTTP endpoint that can be used by load balancers, orchestrators (like Kubernetes), and monitoring systems to determine if the mcp-grafana server is running and healthy.
 
 ## Features
 
-- Multiple health check endpoints (`/healthz`, `/health`, `/health/readiness`, `/health/liveness`)
-- Configurable to run on the same port as the main server or a separate port
-- JSON response format with service information
-- Simple text response option for basic health checks
-- Graceful shutdown support
-- Thread-safe concurrent request handling
+- Single `/healthz` health check endpoint
+- Simple "OK" text response for easy parsing
+- Runs on the same port as the main server
+- Supported for `sse` and `streamable-http` transports only
+- Minimal overhead and complexity
 
-## Available Endpoints
+## Available Endpoint
 
-### `/healthz` and `/health`
-Returns detailed health information in JSON format:
-```json
-{
-  "status": "healthy",
-  "service": "mcp-grafana", 
-  "version": "v1.0.0",
-  "timestamp": "2024-01-01T12:00:00Z"
-}
+### `/healthz`
+Returns a simple "OK" text response with HTTP 200 status:
+```
+OK
 ```
 
-### `/health/readiness`
-Same as `/health` - indicates the service is ready to serve requests.
-
-### `/health/liveness`
-Returns a simple "OK" text response to indicate the service is alive.
+Only GET requests are supported. Other HTTP methods return `405 Method Not Allowed`.
 
 ## Configuration
 
 Health checks are enabled by default for `sse` and `streamable-http` transports. The `stdio` transport does not support health checks as it's used for direct communication.
 
-### Command Line Flags
+### Command Line Flag
 
-- `--health-enabled`: Enable/disable health check endpoints (default: true)
-- `--health-port`: Specific port/address for health checks (optional)
-- `--health-separate-port`: Run health checks on separate port (default: true)
+- `--health-enabled`: Enable/disable health check endpoint (default: true)
 
 ### Examples
 
-#### Enable health checks on separate port (default behavior)
+#### Enable health checks (default behavior)
 ```bash
 ./mcp-grafana --transport sse --address localhost:8000
-# Main server: localhost:8000
-# Health checks: localhost:9000 (automatically assigned)
-```
-
-#### Custom health check port
-```bash
-./mcp-grafana --transport sse --address localhost:8000 --health-port localhost:8080
-# Main server: localhost:8000  
-# Health checks: localhost:8080
-```
-
-#### Health checks on same port as main server
-```bash
-./mcp-grafana --transport sse --address localhost:8000 --health-separate-port=false
-# Main server and health checks: localhost:8000
+# Server with /healthz endpoint: localhost:8000
 ```
 
 #### Disable health checks
 ```bash
 ./mcp-grafana --transport sse --address localhost:8000 --health-enabled=false
-# Only main server: localhost:8000
-# No health check endpoints
+# Server without health checks: localhost:8000
+```
+
+#### Health checks only work with server transports
+```bash
+./mcp-grafana --transport stdio  # No health checks (stdio doesn't support them)
+./mcp-grafana --transport sse --address localhost:8000  # Health checks enabled
+./mcp-grafana --transport streamable-http --address localhost:8000  # Health checks enabled
 ```
 
 ## Use Cases
@@ -87,17 +67,16 @@ spec:
         image: mcp-grafana:latest
         ports:
         - containerPort: 8000
-        - containerPort: 9000
         livenessProbe:
           httpGet:
-            path: /health/liveness
-            port: 9000
+            path: /healthz
+            port: 8000
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /health/readiness
-            port: 9000
+            path: /healthz
+            port: 8000
           initialDelaySeconds: 5
           periodSeconds: 5
 ```
@@ -111,9 +90,8 @@ services:
     command: ["./mcp-grafana", "--transport", "sse", "--address", "0.0.0.0:8000"]
     ports:
       - "8000:8000"
-      - "9000:9000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -130,11 +108,16 @@ upstream mcp_grafana {
 
 server {
     location /healthz {
-        proxy_pass http://10.0.0.1:9000/healthz;
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
     }
     
     location / {
         proxy_pass http://mcp_grafana;
+        
+        # Health check for upstream servers
+        proxy_next_upstream error timeout http_500 http_502 http_503 http_504;
     }
 }
 ```
@@ -143,34 +126,41 @@ server {
 
 - `200 OK`: Service is healthy and ready
 - `405 Method Not Allowed`: Only GET requests are supported
-- `500 Internal Server Error`: Error occurred while generating response
 
 ## Implementation Details
 
-The health check server:
-- Runs independently of the main MCP server
-- Supports graceful shutdown with configurable timeout
-- Uses minimal resources (separate lightweight HTTP server)
+The health check implementation:
+- Uses a reverse proxy approach: MCP server runs on internal port, public server adds `/healthz`
+- Minimal performance impact
 - Thread-safe for concurrent requests
-- Automatically selects available ports when needed
+- No external dependencies
+- Simple text response for maximum compatibility
+
+## Transport Support
+
+| Transport | Health Check Support | Notes |
+|-----------|---------------------|--------|
+| `stdio` | ❌ No | Direct communication, no HTTP server |
+| `sse` | ✅ Yes | Server-Sent Events HTTP server |
+| `streamable-http` | ✅ Yes | HTTP-based MCP server |
 
 ## Security Considerations
 
-- Health check endpoints return minimal information
+- Health check endpoint returns minimal information (just "OK")
 - No authentication required (by design for monitoring systems)
-- Consider network security (firewall rules) if exposing health ports
-- Health checks run on separate port by default to isolate from main service
+- Consider network security (firewall rules) if exposing publicly
+- Health checks share the same port as the main service
 
 ## Troubleshooting
 
-### Health check port conflicts
-If you encounter port binding errors, either:
-1. Specify a custom port with `--health-port`
-2. Let the system auto-assign with the default behavior
-3. Use `--health-separate-port=false` to share the main server port
-
-### Health checks not accessible
+### Health check not accessible
 1. Verify the server transport supports health checks (`sse` or `streamable-http`)
 2. Check that `--health-enabled=true` (default)
-3. Ensure firewall allows access to the health check port
-4. Check server logs for health server startup messages
+3. Ensure server is running and listening on the expected port
+4. Check firewall allows access to the server port
+5. Verify using curl: `curl http://localhost:8000/healthz`
+
+### Expected responses
+- **Healthy server**: `HTTP 200` with body `OK`
+- **Wrong method**: `HTTP 405` with body `Method not allowed`
+- **Server down**: Connection refused or timeout error

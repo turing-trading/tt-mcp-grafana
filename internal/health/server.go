@@ -1,169 +1,130 @@
 package health
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
-	"sync"
+	"net/http/httputil"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/mark3labs/mcp-go/server"
 )
 
-// Server represents a health check server
-type Server struct {
-	config     Config
-	httpServer *http.Server
-	mux        *http.ServeMux
-	mu         sync.RWMutex
-	started    bool
-}
-
-// NewServer creates a new health check server
-func NewServer(config Config) *Server {
-	mux := http.NewServeMux()
-
-	// Add health check endpoints
-	mux.HandleFunc("/healthz", Handler(config))
-	mux.HandleFunc("/health", Handler(config))
-	mux.HandleFunc("/health/readiness", Handler(config))
-	mux.HandleFunc("/health/liveness", SimpleHandler())
-
-	return &Server{
-		config: config,
-		mux:    mux,
-	}
-}
-
-// Start starts the health check server on the specified address
-func (s *Server) Start(addr string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.started {
-		return fmt.Errorf("health server already started")
+// StartSSEWithHealth starts an SSE server with /healthz endpoint on the same port
+func StartSSEWithHealth(mcpServer *server.MCPServer, addr string, contextFunc server.SSEContextFunc, basePath string) error {
+	// Get internal address (increment port by 1)
+	internalAddr, err := getInternalAddr(addr)
+	if err != nil {
+		return fmt.Errorf("failed to get internal address: %w", err)
 	}
 
-	s.httpServer = &http.Server{
-		Addr:         addr,
-		Handler:      s.mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	s.started = true
-	slog.Info("Starting health check server", "address", addr)
-
-	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		s.started = false
-		return fmt.Errorf("health server failed to start: %w", err)
-	}
-
-	return nil
-}
-
-// StartAsync starts the health check server asynchronously
-func (s *Server) StartAsync(addr string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.started {
-		return fmt.Errorf("health server already started")
-	}
-
-	s.httpServer = &http.Server{
-		Addr:         addr,
-		Handler:      s.mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
+	// Start MCP server on internal port
 	go func() {
-		s.started = true
-		slog.Info("Starting health check server", "address", addr)
-
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Health server failed", "error", err)
-			s.mu.Lock()
-			s.started = false
-			s.mu.Unlock()
+		srv := server.NewSSEServer(
+			mcpServer,
+			server.WithSSEContextFunc(contextFunc),
+			server.WithStaticBasePath(basePath),
+		)
+		slog.Info("Starting internal MCP SSE server", "address", internalAddr)
+		if err := srv.Start(internalAddr); err != nil {
+			slog.Error("Internal MCP SSE server failed", "error", err)
 		}
 	}()
 
-	return nil
+	// Wait a moment for the internal server to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Start public server with health check
+	return startPublicServer(addr, internalAddr)
 }
 
-// Stop gracefully stops the health check server
-func (s *Server) Stop(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if !s.started || s.httpServer == nil {
-		return nil
-	}
-
-	slog.Info("Stopping health check server")
-	err := s.httpServer.Shutdown(ctx)
-	s.started = false
-	return err
-}
-
-// IsStarted returns whether the health server is currently running
-func (s *Server) IsStarted() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.started
-}
-
-// GetHealthPort extracts a separate port for health checks based on the main server port
-func GetHealthPort(mainAddr string) (string, error) {
-	host, port, err := net.SplitHostPort(mainAddr)
+// StartStreamableHTTPWithHealth starts a StreamableHTTP server with /healthz endpoint on the same port
+func StartStreamableHTTPWithHealth(mcpServer *server.MCPServer, addr string, contextFunc server.HTTPContextFunc, endpointPath string) error {
+	// Get internal address (increment port by 1)
+	internalAddr, err := getInternalAddr(addr)
 	if err != nil {
-		return "", fmt.Errorf("invalid address format: %w", err)
+		return fmt.Errorf("failed to get internal address: %w", err)
 	}
 
-	// Parse the port number
-	var mainPort int
-	if _, err := fmt.Sscanf(port, "%d", &mainPort); err != nil {
-		return "", fmt.Errorf("invalid port number: %w", err)
-	}
+	// Start MCP server on internal port
+	go func() {
+		srv := server.NewStreamableHTTPServer(
+			mcpServer,
+			server.WithHTTPContextFunc(contextFunc),
+			server.WithStateLess(true),
+			server.WithEndpointPath(endpointPath),
+		)
+		slog.Info("Starting internal MCP StreamableHTTP server", "address", internalAddr)
+		if err := srv.Start(internalAddr); err != nil {
+			slog.Error("Internal MCP StreamableHTTP server failed", "error", err)
+		}
+	}()
 
-	// Use main port + 1000 for health checks to avoid conflicts
-	healthPort := mainPort + 1000
-	return fmt.Sprintf("%s:%d", host, healthPort), nil
+	// Wait a moment for the internal server to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Start public server with health check
+	return startPublicServer(addr, internalAddr)
 }
 
-// GetAvailablePort finds an available port on the system
-func GetAvailablePort() (int, error) {
-	listener, err := net.Listen("tcp", ":0")
+// startPublicServer starts a server that handles /healthz and proxies other requests
+func startPublicServer(publicAddr, internalAddr string) error {
+	// Create proxy to internal MCP server
+	target, err := url.Parse(fmt.Sprintf("http://%s", internalAddr))
 	if err != nil {
-		return 0, err
+		return fmt.Errorf("invalid internal address: %w", err)
 	}
-	defer listener.Close()
 
-	addr := listener.Addr().(*net.TCPAddr)
-	return addr.Port, nil
+	proxy := httputil.NewSingleHostReverseProxy(target)
+
+	// Create handler
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Handle health check
+		if r.URL.Path == "/healthz" {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+			return
+		}
+
+		// Proxy everything else to internal MCP server
+		proxy.ServeHTTP(w, r)
+	})
+
+	// Start public server
+	publicServer := &http.Server{
+		Addr:    publicAddr,
+		Handler: handler,
+	}
+
+	slog.Info("Starting Grafana MCP server with /healthz health check", "address", publicAddr)
+	return publicServer.ListenAndServe()
 }
 
-// GenerateHealthAddr generates a health check address based on the main address
-func GenerateHealthAddr(mainAddr string) string {
-	// Try to get a predictable health port first
-	if healthAddr, err := GetHealthPort(mainAddr); err == nil {
-		return healthAddr
+// getInternalAddr creates an internal address by incrementing the port
+func getInternalAddr(publicAddr string) (string, error) {
+	// Split host and port
+	parts := strings.Split(publicAddr, ":")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid address format: %s", publicAddr)
 	}
 
-	// Fallback to finding any available port
-	host, _, err := net.SplitHostPort(mainAddr)
+	host := parts[0]
+	portStr := parts[1]
+
+	// Parse port number
+	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		host = "localhost"
+		return "", fmt.Errorf("invalid port number: %s", portStr)
 	}
 
-	if port, err := GetAvailablePort(); err == nil {
-		return fmt.Sprintf("%s:%d", host, port)
-	}
-
-	// Last resort fallback
-	return "localhost:9001"
+	// Increment port for internal server
+	internalPort := port + 1
+	return fmt.Sprintf("%s:%d", host, internalPort), nil
 }
