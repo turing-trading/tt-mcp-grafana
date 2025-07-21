@@ -103,12 +103,12 @@ func TestHealthEndpointInProxy(t *testing.T) {
 					return
 				}
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("OK"))
+				_, _ = w.Write([]byte("OK"))
 				return
 			}
 			// For non-health requests, return a different response
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Not Found"))
+			_, _ = w.Write([]byte("Not Found"))
 		})
 
 		tests := []struct {

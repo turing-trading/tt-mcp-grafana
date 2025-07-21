@@ -99,7 +99,7 @@ func TestRunFunctionSignature(t *testing.T) {
 
 		// This will likely panic due to os.Stdin not being set up properly,
 		// but that's expected in a test environment
-		run(transport, addr, basePath, endpointPath, logLevel, dt, gc, healthEnabled)
+		_ = run(transport, addr, basePath, endpointPath, logLevel, dt, gc, healthEnabled)
 		ctx <- true
 	}()
 
