@@ -82,7 +82,7 @@ func TestCallMCP_ExtractsConfigFromContext(t *testing.T) {
 				return context.Background()
 			},
 			datasourceUID: "test-uid",
-			expectedError: "Grafana URL not found in context",
+			expectedError: "grafana URL not found in context",
 		},
 		{
 			name: "error when datasource not found",
