@@ -139,34 +139,29 @@ func run(transport, addr, basePath, endpointPath string, logLevel slog.Level, dt
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
 	s := newServer(dt)
 
-	// Set up signal handling for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	
 	// Create a context that will be cancelled on shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	
 	// Handle shutdown in a goroutine
 	go func() {
 		<-sigChan
 		slog.Info("Received shutdown signal, cleaning up...")
-		cancel()
-		
-		// Call cleanup functions
-		tools.StopProxiedTools()
-		
-		// Give a bit of time for cleanup and log flushing
-		time.Sleep(100 * time.Millisecond)
-		os.Exit(0)
+		cancel() // This will cause servers to stop
 	}()
 
+	// Start the appropriate server
+	var serverErr error
 	switch transport {
 	case "stdio":
 		srv := server.NewStdioServer(s)
 		srv.SetContextFunc(mcpgrafana.ComposedStdioContextFunc(gc))
 		slog.Info("Starting Grafana MCP server using stdio transport", "version", version())
-		return srv.Listen(ctx, os.Stdin, os.Stdout)
+		serverErr = srv.Listen(ctx, os.Stdin, os.Stdout)
 	case "sse":
 		srv := server.NewSSEServer(s,
 			server.WithSSEContextFunc(mcpgrafana.ComposedSSEContextFunc(gc)),
@@ -176,9 +171,7 @@ func run(transport, addr, basePath, endpointPath string, logLevel slog.Level, dt
 		if err := srv.Start(addr); err != nil {
 			return fmt.Errorf("server error: %v", err)
 		}
-		// Block until context is cancelled
 		<-ctx.Done()
-		return nil
 	case "streamable-http":
 		srv := server.NewStreamableHTTPServer(s, server.WithHTTPContextFunc(mcpgrafana.ComposedHTTPContextFunc(gc)),
 			server.WithStateLess(true),
@@ -188,15 +181,18 @@ func run(transport, addr, basePath, endpointPath string, logLevel slog.Level, dt
 		if err := srv.Start(addr); err != nil {
 			return fmt.Errorf("server error: %v", err)
 		}
-		// Block until context is cancelled
 		<-ctx.Done()
-		return nil
 	default:
-		return fmt.Errorf(
-			"invalid transport type: %s. Must be 'stdio', 'sse' or 'streamable-http'",
-			transport,
-		)
+		return fmt.Errorf("invalid transport type: %s. Must be 'stdio', 'sse' or 'streamable-http'", transport)
 	}
+	
+	// Cleanup after server stops
+	tools.StopProxiedTools()
+	
+	// Give a bit of time for cleanup and log flushing
+	time.Sleep(100 * time.Millisecond)
+	
+	return serverErr
 }
 
 func main() {
