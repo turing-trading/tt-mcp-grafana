@@ -27,3 +27,10 @@ datasources:
     access: proxy
     url: http://pyroscope:4040
     isDefault: false
+  - name: Tempo
+    id: 4
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    isDefault: false
