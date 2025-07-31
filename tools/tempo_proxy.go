@@ -573,7 +573,7 @@ func (r *tempoToolRegistry) registerOrUpdateTool(toolName string, tool MCPTool, 
 		r.updateMappings(toolName, datasourceUIDs)
 	} else {
 		// Register new tool
-		description := tool.Description
+		var description string
 		if len(datasourceUIDs) > 1 {
 			description = fmt.Sprintf("%s (via Tempo datasources: %s)", 
 				tool.Description, strings.Join(datasourceNames, ", "))

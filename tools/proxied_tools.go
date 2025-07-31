@@ -337,7 +337,7 @@ func discoverDatasources(ctx context.Context, datasourceType string) (map[string
 	// Get the Grafana client from context
 	client := mcpgrafana.GrafanaClientFromContext(ctx)
 	if client == nil {
-		return nil, fmt.Errorf("Grafana client not found in context")
+		return nil, fmt.Errorf("grafana client not found in context")
 	}
 	
 	// List all datasources
@@ -409,7 +409,7 @@ func callMCP(ctx context.Context, datasourceUID string, method string, params in
 	// Extract Grafana configuration from context
 	cfg := mcpgrafana.GrafanaConfigFromContext(ctx)
 	if cfg.URL == "" {
-		return nil, fmt.Errorf("Grafana URL not found in context")
+		return nil, fmt.Errorf("grafana URL not found in context")
 	}
 	
 	// Get the datasource information - we need to determine the type from the UID
@@ -497,7 +497,7 @@ func callMCP(ctx context.Context, datasourceUID string, method string, params in
 	if err != nil {
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 	
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
