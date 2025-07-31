@@ -11,6 +11,7 @@ import (
 	"time"
 
 	mcpgrafana "github.com/grafana/mcp-grafana"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -260,7 +261,7 @@ func TestSessionManager(t *testing.T) {
 		session := sm.GetSession("datasource-1", 123)
 		
 		// Set tools
-		tools := []MCPTool{
+		tools := []mcp.Tool{
 			{Name: "tool1", Description: "Tool 1"},
 			{Name: "tool2", Description: "Tool 2"},
 		}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	mcpgrafana "github.com/grafana/mcp-grafana"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
@@ -106,13 +107,13 @@ type tempoToolRegistry struct {
 type discoveryResult struct {
 	uid   string
 	ds    ProxyDatasource
-	tools []MCPTool
+	tools []mcp.Tool
 	err   error
 }
 
 // toolDiscovery represents a tool discovered from a specific datasource
 type toolDiscovery struct {
-	tool           MCPTool
+	tool           mcp.Tool
 	datasourceUID  string
 	datasourceName string
 }
@@ -134,7 +135,7 @@ var (
 )
 
 // computeToolHash generates a hash of the tool's schema for comparison
-func computeToolHash(tool MCPTool) string {
+func computeToolHash(tool mcp.Tool) string {
 	// Create a normalized representation of the tool for comparison
 	normalized := map[string]interface{}{
 		"description": tool.Description,
@@ -230,7 +231,7 @@ func callProxiedTempoTool(ctx context.Context, toolName string, args TempoProxyP
 	originalToolName := tool.originalName
 	
 	// Prepare call parameters
-	callParams := MCPCallToolParams{
+	callParams := mcp.CallToolParams{
 		Name:      originalToolName,
 		Arguments: additionalArgs,
 	}
@@ -247,7 +248,7 @@ func callProxiedTempoTool(ctx context.Context, toolName string, args TempoProxyP
 		return "", fmt.Errorf("failed to marshal call result: %w", err)
 	}
 	
-	var callResult MCPCallToolResult
+	var callResult mcp.CallToolResult
 	if err := json.Unmarshal(resultBytes, &callResult); err != nil {
 		return "", fmt.Errorf("failed to unmarshal call result: %w", err)
 	}
@@ -255,7 +256,10 @@ func callProxiedTempoTool(ctx context.Context, toolName string, args TempoProxyP
 	// Format the response to include proxy information for test validation
 	var responseText string
 	if len(callResult.Content) > 0 {
-		responseText = callResult.Content[0].Text
+		// Type assertion needed since Content is []mcp.Content (interface)
+		if textContent, ok := callResult.Content[0].(mcp.TextContent); ok {
+			responseText = textContent.Text
+		}
 	}
 	
 	// Add proxy indicators for test validation
@@ -540,7 +544,7 @@ func (r *tempoToolRegistry) updateToolRegistrations(toolsByHash map[string][]too
 }
 
 // registerOrUpdateTool registers a new tool or updates an existing one
-func (r *tempoToolRegistry) registerOrUpdateTool(toolName string, tool MCPTool, discoveries []toolDiscovery, hash string, successfulDatasources map[string]time.Time) {
+func (r *tempoToolRegistry) registerOrUpdateTool(toolName string, tool mcp.Tool, discoveries []toolDiscovery, hash string, successfulDatasources map[string]time.Time) {
 	datasourceUIDs := make([]string, len(discoveries))
 	datasourceNames := make([]string, len(discoveries))
 	for i, d := range discoveries {

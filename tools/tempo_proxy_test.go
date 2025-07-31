@@ -7,29 +7,30 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestComputeToolHash(t *testing.T) {
 	t.Run("identical tools produce same hash", func(t *testing.T) {
-		tool1 := MCPTool{
+		tool1 := mcp.Tool{
 			Name:        "test-tool",
 			Description: "A test tool",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
+			InputSchema: mcp.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
 					"param1": map[string]interface{}{"type": "string"},
 				},
 			},
 		}
 		
-		tool2 := MCPTool{
+		tool2 := mcp.Tool{
 			Name:        "test-tool",
 			Description: "A test tool",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
+			InputSchema: mcp.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
 					"param1": map[string]interface{}{"type": "string"},
 				},
 			},
@@ -42,16 +43,16 @@ func TestComputeToolHash(t *testing.T) {
 	})
 	
 	t.Run("different descriptions produce different hashes", func(t *testing.T) {
-		tool1 := MCPTool{
+		tool1 := mcp.Tool{
 			Name:        "test-tool",
 			Description: "A test tool",
-			InputSchema: map[string]interface{}{},
+			InputSchema: mcp.ToolInputSchema{},
 		}
 		
-		tool2 := MCPTool{
+		tool2 := mcp.Tool{
 			Name:        "test-tool",
 			Description: "A different test tool",
-			InputSchema: map[string]interface{}{},
+			InputSchema: mcp.ToolInputSchema{},
 		}
 		
 		hash1 := computeToolHash(tool1)
@@ -61,23 +62,23 @@ func TestComputeToolHash(t *testing.T) {
 	})
 	
 	t.Run("different schemas produce different hashes", func(t *testing.T) {
-		tool1 := MCPTool{
+		tool1 := mcp.Tool{
 			Name:        "test-tool",
 			Description: "A test tool",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
+			InputSchema: mcp.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
 					"param1": map[string]interface{}{"type": "string"},
 				},
 			},
 		}
 		
-		tool2 := MCPTool{
+		tool2 := mcp.Tool{
 			Name:        "test-tool",
 			Description: "A test tool",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
+			InputSchema: mcp.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
 					"param1": map[string]interface{}{"type": "number"},
 				},
 			},

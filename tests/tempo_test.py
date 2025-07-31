@@ -50,43 +50,37 @@ class TestTempoMCPProxy:
             required = tool.inputSchema.get('required', [])
             assert 'datasource_uid' in required, f"Tool {tool.name} should require datasource_uid"
 
-    @pytest.mark.anyio 
-    async def test_tempo_tool_calls_through_proxy(self, mcp_client):
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("tool,args,expected_response_indicators", [
+        (
+            "tempo_get_attribute_names",
+            {"datasource_uid": "tempo"},
+            ["tempo", "datasource"]
+        ),
+        (
+            "tempo_docs_traceql",
+            {"datasource_uid": "tempo"},
+            ["tempo", "traceql"]
+        )
+    ])
+    async def test_tempo_tool_calls_through_proxy(self, mcp_client, tool, args, expected_response_indicators):
         """Test that tempo tool calls are properly routed through our proxy."""
         
-        # Test multiple tools to ensure comprehensive proxy coverage
-        test_cases = [
-            {
-                "tool": "tempo_get_attribute_names",
-                "args": {"datasource_uid": "tempo"},
-                "expected_response_indicators": ["tempo", "datasource"]
-            },
-            {
-                "tool": "tempo_docs_traceql", 
-                "args": {"datasource_uid": "tempo"},
-                "expected_response_indicators": ["tempo", "traceql"]
-            }
-        ]
+        # Call the proxied tool
+        call_response = await mcp_client.call_tool(tool, arguments=args)
         
-        for test_case in test_cases:
-            # Call the proxied tool
-            call_response = await mcp_client.call_tool(
-                test_case["tool"],
-                arguments=test_case["args"]
-            )
-            
-            # Verify we got a response
-            assert call_response.content, f"Tool {test_case['tool']} should return content"
-            response_text = call_response.content[0].text
-            
-            # Verify the response indicates it went through our proxy
-            # Our current implementation returns mock responses, so verify that
-            assert "Proxied call" in response_text, f"Response should indicate proxy routing: {response_text}"
-            assert test_case["args"]["datasource_uid"] in response_text, f"Response should include datasource UID: {response_text}"
-            
-            # Verify expected content indicators
-            for indicator in test_case["expected_response_indicators"]:
-                assert indicator.lower() in response_text.lower(), f"Response should contain '{indicator}': {response_text}"
+        # Verify we got a response
+        assert call_response.content, f"Tool {tool} should return content"
+        response_text = call_response.content[0].text
+        
+        # Verify the response indicates it went through our proxy
+        # Our current implementation returns mock responses, so verify that
+        assert "Proxied call" in response_text, f"Response should indicate proxy routing: {response_text}"
+        assert args["datasource_uid"] in response_text, f"Response should include datasource UID: {response_text}"
+        
+        # Verify expected content indicators
+        for indicator in expected_response_indicators:
+            assert indicator.lower() in response_text.lower(), f"Response should contain '{indicator}': {response_text}"
 
     @pytest.mark.anyio
     async def test_tempo_tool_validation(self, mcp_client):

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	mcpgrafana "github.com/grafana/mcp-grafana"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
@@ -150,41 +151,11 @@ type JSONRPCResponse struct {
 	Error   interface{} `json:"error,omitempty"`
 }
 
-type MCPInitializeParams struct {
-	ProtocolVersion string                 `json:"protocolVersion"`
-	Capabilities    map[string]interface{} `json:"capabilities"`
-	ClientInfo      map[string]string      `json:"clientInfo"`
-}
-
-type MCPListToolsResult struct {
-	Tools []MCPTool `json:"tools"`
-}
-
-type MCPTool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	InputSchema map[string]interface{} `json:"inputSchema"`
-}
-
-type MCPCallToolParams struct {
-	Name      string                 `json:"name"`
-	Arguments map[string]interface{} `json:"arguments"`
-}
-
-type MCPCallToolResult struct {
-	Content []MCPContent `json:"content"`
-}
-
-type MCPContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
 // ProxySession represents a session with a specific datasource
 type ProxySession struct {
 	ID           string
 	DatasourceID int64
-	Tools        []MCPTool
+	Tools        []mcp.Tool
 	Initialized  bool
 	LastUsed     time.Time
 }
@@ -247,7 +218,7 @@ func (sm *SessionManager) SetSessionID(datasourceUID string, sessionID string) {
 }
 
 // SetTools updates the tools for a datasource session
-func (sm *SessionManager) SetTools(datasourceUID string, tools []MCPTool) {
+func (sm *SessionManager) SetTools(datasourceUID string, tools []mcp.Tool) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	
@@ -584,12 +555,12 @@ func ensureSession(ctx context.Context, datasourceUID string) error {
 		}
 		
 		// Initialize the session
-		initParams := MCPInitializeParams{
+		initParams := mcp.InitializeParams{
 			ProtocolVersion: "2024-11-05",
-			Capabilities:    map[string]interface{}{},
-			ClientInfo: map[string]string{
-				"name":    "grafana-mcp-server",
-				"version": "1.0",
+			Capabilities:    mcp.ClientCapabilities{},
+			ClientInfo: mcp.Implementation{
+				Name:    "grafana-mcp-server",
+				Version: "1.0",
 			},
 		}
 		
@@ -620,7 +591,7 @@ func ensureSession(ctx context.Context, datasourceUID string) error {
 			return fmt.Errorf("failed to marshal tools result: %w", err)
 		}
 		
-		var toolsResult MCPListToolsResult
+		var toolsResult mcp.ListToolsResult
 		if err := json.Unmarshal(resultBytes, &toolsResult); err != nil {
 			return fmt.Errorf("failed to unmarshal tools result: %w", err)
 		}
