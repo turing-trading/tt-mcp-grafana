@@ -1,3 +1,8 @@
+// Package tools provides tools for the Grafana MCP server.
+//
+// Proxied tools usage:
+//   - MCP server (reads env vars): AddProxiedTools(mcp)
+//   - Plugin/library usage: AddProxiedToolsWithConfig(mcp, config)
 package tools
 
 import (
@@ -25,6 +30,26 @@ type ProxyConfig struct {
 	// Tempo-specific configuration
 	TempoEnabled       bool
 	TempoPollingInterval time.Duration
+}
+
+// ProxiedToolsConfig holds the complete configuration for proxied tools
+type ProxiedToolsConfig struct {
+	// Grafana connection settings
+	GrafanaURL    string
+	GrafanaAPIKey string
+	
+	// Proxy-specific settings
+	ProxyConfig ProxyConfig
+}
+
+// DefaultProxiedToolsConfig returns the default configuration for proxied tools
+func DefaultProxiedToolsConfig() ProxiedToolsConfig {
+	return ProxiedToolsConfig{
+		ProxyConfig: ProxyConfig{
+			TempoEnabled:         true,
+			TempoPollingInterval: 5 * time.Minute,
+		},
+	}
 }
 
 // proxyConfigKey is the context key for proxy configuration
@@ -69,31 +94,55 @@ func RegisterProxyHandler(datasourceType string, handler ProxyHandler) {
 	proxyHandlers[datasourceType] = handler
 }
 
-// AddProxiedTools initializes all registered proxy handlers
+// AddProxiedTools initializes all registered proxy handlers using environment variables
+// This function maintains backward compatibility for the standalone MCP server use case
 func AddProxiedTools(mcp *server.MCPServer) {
+	// Read configuration from environment variables
+	config := ProxiedToolsConfig{
+		GrafanaURL:    os.Getenv("GRAFANA_URL"),
+		GrafanaAPIKey: os.Getenv("GRAFANA_API_KEY"),
+		ProxyConfig: ProxyConfig{
+			TempoEnabled:         os.Getenv("TEMPO_PROXY_ENABLED") != "false",
+			TempoPollingInterval: parsePollingInterval(os.Getenv("TEMPO_POLLING_INTERVAL")),
+		},
+	}
+	
+	AddProxiedToolsWithConfig(mcp, config)
+}
+
+// AddProxiedToolsWithConfig initializes all registered proxy handlers with the provided configuration
+// This function can be used by plugins or other integrations that need to provide configuration programmatically
+//
+// Example usage in a Grafana plugin:
+//
+//	config := tools.DefaultProxiedToolsConfig()
+//	config.GrafanaURL = "https://grafana.example.com"
+//	config.GrafanaAPIKey = "my-api-key"
+//	config.ProxyConfig.TempoEnabled = true
+//	tools.AddProxiedToolsWithConfig(mcpServer, config)
+func AddProxiedToolsWithConfig(mcp *server.MCPServer, config ProxiedToolsConfig) {
+	AddProxiedToolsWithContext(context.Background(), mcp, config)
+}
+
+// AddProxiedToolsWithContext initializes all registered proxy handlers with the provided context and configuration
+// This is the most flexible initialization function, allowing full control over both context and configuration
+func AddProxiedToolsWithContext(ctx context.Context, mcp *server.MCPServer, config ProxiedToolsConfig) {
 	handlersMutex.RLock()
 	defer handlersMutex.RUnlock()
 	
-	// Create a context with proxy configuration from environment
-	ctx := context.Background()
-	config := ProxyConfig{
-		TempoEnabled:         os.Getenv("TEMPO_PROXY_ENABLED") != "false",
-		TempoPollingInterval: parsePollingInterval(os.Getenv("TEMPO_POLLING_INTERVAL")),
-	}
-	ctx = WithProxyConfig(ctx, config)
+	// Add proxy configuration to the context
+	ctx = WithProxyConfig(ctx, config.ProxyConfig)
 	
-	// Also need Grafana config for the proxy handlers
-	grafanaURL := os.Getenv("GRAFANA_URL")
-	grafanaAPIKey := os.Getenv("GRAFANA_API_KEY")
-	if grafanaURL != "" {
+	// Set up Grafana configuration if provided
+	if config.GrafanaURL != "" {
 		gc := mcpgrafana.GrafanaConfig{
-			URL:    grafanaURL,
-			APIKey: grafanaAPIKey,
+			URL:    config.GrafanaURL,
+			APIKey: config.GrafanaAPIKey,
 		}
 		ctx = mcpgrafana.WithGrafanaConfig(ctx, gc)
 		
 		// Create Grafana client
-		client := mcpgrafana.NewGrafanaClient(ctx, grafanaURL, grafanaAPIKey)
+		client := mcpgrafana.NewGrafanaClient(ctx, config.GrafanaURL, config.GrafanaAPIKey)
 		ctx = mcpgrafana.WithGrafanaClient(ctx, client)
 	}
 	
